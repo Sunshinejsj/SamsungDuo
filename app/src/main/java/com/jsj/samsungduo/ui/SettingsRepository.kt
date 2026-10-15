@@ -3,6 +3,7 @@ package com.jsj.samsungduo.ui
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.os.Bundle
 import android.util.Log
 import androidx.core.content.edit
 import com.jsj.samsungduo.SamsungDuoApp
@@ -209,6 +210,35 @@ class SettingsRepository(context: Context) {
             prefs.putBoolean(Prefs.KEY_DEBUG_LOG, current.getBoolean(Prefs.KEY_DEBUG_LOG, Prefs.DEF_DEBUG_LOG))
         }
         notifyModule()
+    }
+
+    // -------------------------------------------------------- import / export
+
+    /**
+     * Replaces every setting with [snapshot], in one write per store.
+     *
+     * <p>Used by "import settings". Deliberately not a loop over the single-key
+     * setters: each of those commits, pushes and broadcasts on its own, so
+     * importing ~50 keys that way would broadcast 50 times and make SystemUI
+     * rebuild the glyph 50 times in a row.
+     */
+    fun replaceAll(snapshot: TrioSettings) {
+        val bundle = snapshot.toBundle()
+        preferences().edit(commit = true) { putBundle(this, bundle) }
+        push { putBundle(it, bundle) }
+        notifyModule()
+    }
+
+    /** Copies every entry of [bundle] onto [editor], dispatching on value type. */
+    private fun putBundle(editor: SharedPreferences.Editor, bundle: Bundle) {
+        for (key in bundle.keySet()) {
+            when (val value = bundle[key]) {
+                is Boolean -> editor.putBoolean(key, value)
+                is Int -> editor.putInt(key, value)
+                is Float -> editor.putFloat(key, value)
+                is String -> editor.putString(key, value)
+            }
+        }
     }
 
     private fun writeBoolean(key: String, value: Boolean) {

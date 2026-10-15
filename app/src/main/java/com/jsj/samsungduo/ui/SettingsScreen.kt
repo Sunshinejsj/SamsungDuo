@@ -4,7 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -55,6 +57,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.pm.PackageInfoCompat
 import com.jsj.samsungduo.SamsungDuoApp
 import com.jsj.samsungduo.Prefs
@@ -65,6 +69,7 @@ import com.jsj.samsungduo.TrioSettings
 import io.github.libxposed.service.XposedService
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import org.json.JSONObject
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -1450,8 +1455,12 @@ private fun LazyListScope.aboutTab(
 ) {
     item { ActivatedRow(settings = settings, service = service) }
     item { InfoCard(service = service) }
-    item { UpdateCard(controller = updater) }
+    // ★ v87：作者与检查更新对调（用户要求）—— 只读的作者信息在前，带动作的检查更新
+    //   紧随其后；导出/导入同样是对配置做动作，放在检查更新下面。
     item { AuthorCard() }
+    item { UpdateCard(controller = updater) }
+    item { ExportConfigCard(settings = settings) }
+    item { ImportConfigCard(update = update) }
     // ★ v85：本项目自己的仓库在上游参考项目上面 —— 用户先看到的是"这个模块本身"，
     //   致谢对象退到第二位。
     item { RepoHomeCard() }
@@ -1491,6 +1500,124 @@ private fun AuthorCard() {
                 bottomPadding = 0.dp,
             )
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 配置的导出 / 导入
+//
+// 文件格式是一个 JSON 对象：键名与 Prefs.KEY_* 完全一致（直接复用 TrioSettings
+// .toBundle() 的键，不另建一份映射），外加一个 config_version 标记，将来格式变了
+// 可以识别并拒绝。走系统文件选择器（SAF）而不是自己往公共 Download 目录写文件：
+// Android 10+ 限制直接写公共目录，而且让用户自己选位置才知道文件去了哪。
+// ---------------------------------------------------------------------------
+
+private const val CONFIG_VERSION_KEY = "config_version"
+private const val CONFIG_VERSION = 1
+private const val CONFIG_FILE_NAME = "SamsungDuo-config.json"
+
+/**
+ * Writes the whole configuration to a file the user names and places.
+ *
+ * <p>Only the four types the preferences actually use are written; anything
+ * else would come back from JSON as a shape [TrioSettings.fromBundle] has no
+ * way to read, and the point of the file is that it round-trips.
+ */
+@Composable
+private fun ExportConfigCard(settings: TrioSettings) {
+    val context = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val ok = runCatching {
+            val json = JSONObject()
+            json.put(CONFIG_VERSION_KEY, CONFIG_VERSION)
+            val bundle = settings.toBundle()
+            for (key in bundle.keySet()) {
+                val value = bundle[key]
+                if (value is Boolean || value is Int || value is Float || value is String) {
+                    json.put(key, value)
+                }
+            }
+            val bytes = json.toString(2).toByteArray(Charsets.UTF_8)
+            context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                ?: error("cannot open $uri for writing")
+        }.isSuccess
+        Toast.makeText(
+            context,
+            context.getString(
+                if (ok) R.string.config_export_done else R.string.config_export_failed),
+            Toast.LENGTH_SHORT,
+        ).show()
+    }
+    Card {
+        ArrowPreference(
+            title = stringResource(R.string.config_export_title),
+            summary = stringResource(R.string.config_export_summary),
+            insideMargin = SettingsItemMargin,
+            // A device with no save dialogue must not take the screen down with it.
+            onClick = { runCatching { launcher.launch(CONFIG_FILE_NAME) } },
+        )
+    }
+}
+
+/**
+ * Reads a configuration back from a file the user picks.
+ *
+ * <p>Every value goes through [TrioSettings.fromBundle] — the same path the
+ * hooked process uses for broadcast extras: each missing key falls back on its
+ * own default and every number is clamped there. A partial or hand-edited file
+ * therefore cannot put the status bar into a state the UI would not let you
+ * dial in by hand.
+ */
+@Composable
+private fun ImportConfigCard(update: ((SettingsRepository) -> Unit) -> Unit) {
+    val context = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val imported: TrioSettings? = runCatching {
+            val text = context.contentResolver.openInputStream(uri)
+                ?.use { it.readBytes().toString(Charsets.UTF_8) }
+                ?: error("cannot read $uri")
+            val json = JSONObject(text)
+            if (json.optInt(CONFIG_VERSION_KEY, CONFIG_VERSION) > CONFIG_VERSION) {
+                error("config written by a newer version")
+            }
+            val bundle = Bundle()
+            val keys = json.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                when (val value = json.get(key)) {
+                    is Boolean -> bundle.putBoolean(key, value)
+                    is Int -> bundle.putInt(key, value)
+                    is Double -> bundle.putFloat(key, value.toFloat())
+                    is String -> bundle.putString(key, value)
+                }
+            }
+            TrioSettings.fromBundle(bundle)
+        }.getOrNull()
+
+        if (imported == null) {
+            Toast.makeText(
+                context, context.getString(R.string.config_import_failed), Toast.LENGTH_SHORT,
+            ).show()
+        } else {
+            update { it.replaceAll(imported) }
+            Toast.makeText(
+                context, context.getString(R.string.config_import_done), Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+    Card {
+        ArrowPreference(
+            title = stringResource(R.string.config_import_title),
+            summary = stringResource(R.string.config_import_summary),
+            insideMargin = SettingsItemMargin,
+            onClick = { runCatching { launcher.launch(arrayOf("application/json", "*/*")) } },
+        )
     }
 }
 

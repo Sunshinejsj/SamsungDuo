@@ -50,7 +50,7 @@
 | 电池读数 | 电池温度、温度读数边距、读数尺寸与字重 |
 | 充电双显 | 充电时闪电与电量同时显示（左闪电右电量、上下边对齐），字号 30–36 |
 | 防烧屏 | 图标微动开关、幅度、周期 |
-| 关于 | 检查更新（在线更新）、查看仓库、调试日志 |
+| 关于 | 检查更新（在线更新）、导出配置、导入配置、查看仓库、调试日志 |
 
 **独立窗口绘制**是「整体尺寸」超过 100% 的钥匙：关着它，三合一挂在状态栏那一行里参与排布，
 放大只能放开裁剪、而裁剪对 Android 窗口边界无效，所以最大 100%；开着它，三合一画在自己
@@ -75,11 +75,11 @@ $env:ANDROID_HOME = 'C:\Android\Sdk'
 
 ## 发布与在线更新
 
-版本号两个数都在 `app/build.gradle.kts`：`versionCode` 与 `versionName`（如 95 / 9.5）。
+版本号两个数都在 `app/build.gradle.kts`：`versionCode` 与 `versionName`（如 96 / 9.6）。
 发版用仓库里的脚本（构建 → aapt2 核对版本 → 打 tag → 建正式 Release → 传 APK）：
 
 ```powershell
-.\release.ps1 -Version 9.5 -NotesFile .\notes.md
+.\release.ps1 -Version 9.6 -NotesFile .\notes.md
 ```
 
 App 内的「检查更新」读 `releases/latest`，所以 **tag 必须是 `v` + versionName**（如 `v9.5`）、
