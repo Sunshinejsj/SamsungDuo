@@ -39,7 +39,7 @@ android {
         create("release") {
             storeFile = rootProject.file(".tools/debug.keystore")
             storePassword = "android"
-            keyAlias = "hyperduo"
+            keyAlias = "samsungduo"
             keyPassword = "android"
         }
     }
