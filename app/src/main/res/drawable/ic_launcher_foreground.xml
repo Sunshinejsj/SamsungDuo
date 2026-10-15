@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- The trio glyph, scaled into the adaptive-icon safe zone. -->
+    <group
+        android:translateX="20.68"
+        android:translateY="20.82"
+        android:scaleX="0.56"
+        android:scaleY="0.56">
+
+        <!-- Battery ring: open at the bottom, gap at 12 o'clock. -->
+        <path
+            android:pathData="M15.5 88.25 A51.5 51.5 0 1 1 103.5 88.25"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="8"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+
+        <!-- Wi-Fi arcs -->
+        <path
+            android:pathData="M38.5 55.5 A31 31 0 0 1 80.5 55.5"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="7"
+            android:strokeLineCap="round" />
+        <path
+            android:pathData="M47 65.25 A18.5 18.5 0 0 1 72 65.25"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="7"
+            android:strokeLineCap="round" />
+        <!-- Wi-Fi dot: the same teardrop wedge the status bar draws, so the
+             icon and the live glyph stay the same shape. Sized against the
+             level dots (r=5.5), it spans 14.4 x 11.05 design units. -->
+        <path
+            android:pathData="M59.5 69.9 C61.0 69.9 65.2 70.8 66.5 73 C66.7 73.8 66.7 74.3 66.5 75 C63.8 78.8 61.15 80.95 59.5 80.95 C57.85 80.95 55.2 78.8 52.5 75 C52.3 74.3 52.3 73.8 52.5 73 C53.8 70.8 58.0 69.9 59.5 69.9 Z"
+            android:fillColor="#FFFFFFFF" />
+
+        <!-- Four signal level dots -->
+        <path
+            android:pathData="M38.5 104.2 A5.5 5.5 0 1 1 27.5 104.2 A5.5 5.5 0 1 1 38.5 104.2 Z"
+            android:fillColor="#FFFFFFFF" />
+        <path
+            android:pathData="M56 111.2 A5.5 5.5 0 1 1 45 111.2 A5.5 5.5 0 1 1 56 111.2 Z"
+            android:fillColor="#FFFFFFFF" />
+        <path
+            android:pathData="M74 111.7 A5.5 5.5 0 1 1 63 111.7 A5.5 5.5 0 1 1 74 111.7 Z"
+            android:fillColor="#FFFFFFFF" />
+        <path
+            android:pathData="M91.5 105.8 A5.5 5.5 0 1 1 80.5 105.8 A5.5 5.5 0 1 1 91.5 105.8 Z"
+            android:fillColor="#FFFFFFFF" />
+    </group>
+</vector>

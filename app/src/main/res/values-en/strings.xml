@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SamsungDuo</string>
+    <string name="xposed_description">Merges Wi-Fi, mobile signal and battery into a single iPhone-Duo style trio glyph in the status bar.</string>
+
+    <string name="group_appearance">Appearance</string>
+    <string name="group_geometry">Geometry</string>
+    <string name="group_colors">Colors</string>
+
+    <string name="group_stroke">Stroke</string>
+    <string name="group_text">Text</string>
+    <string name="group_type">Network type</string>
+    <string name="group_perf">Battery readouts</string>
+    <string name="group_spacing">Spacing</string>
+    <string name="group_burn_in">Burn-in protection</string>
+    <string name="group_out_signal">Out-of-ring signal</string>
+    <string name="group_track">Track</string>
+
+    <string name="tab_general">General</string>
+
+    <string name="master_title">Enable trio icon</string>
+    <string name="master_summary">Master switch. Turning it off hides the trio icon this module draws; the stock icons are untouched.</string>
+
+    <string name="trio_style_title">Trio style</string>
+    <string name="trio_style_summary">Which arrangement to draw. The ring is the default; the rectangular one puts a column of signal dots on each side of the centre and a battery bar across the bottom.</string>
+    <string name="trio_style_ring">Ring</string>
+    <string name="trio_style_rect">Rectangular</string>
+
+    <string name="overlay_title">Draw in its own window</string>
+    <string name="overlay_summary">Stops the status bar window height from clipping the trio icon. Turn off to draw inside the bar again. It is also the gate for the trio size: only with it on can the size reach 100-130%; with it off the maximum is 100%.</string>
+
+    <string name="show_wifi_title">Show Wi-Fi arcs</string>
+    <string name="show_wifi_summary">Draws the Wi-Fi arcs, the number of arcs following the actual signal strength; hidden when off.</string>
+
+    <string name="show_mobile_title">Show mobile dots</string>
+    <string name="show_mobile_summary">Draws four level dots at the bottom for the mobile signal strength; hidden when off.</string>
+
+    <string name="dual_sim_title">Dual-SIM signal</string>
+    <string name="dual_sim_summary">With no Wi-Fi and not charging, draws two rows of signal dots: SIM 1 on top, SIM 2 below. Only applies to dual-SIM; single-SIM or charging still shows one row for the active data SIM.</string>
+
+    <string name="show_value_title">Show battery number</string>
+    <string name="show_value_summary">Shows the battery percentage inside the ring; a bolt replaces it while charging. Hidden when off.</string>
+
+    <string name="show_bolt_title">Bolt while charging</string>
+    <string name="show_bolt_summary">When off, the in-ring bolt icon is not drawn.</string>
+
+    <string name="show_mobile_type_title">Network type</string>
+    <string name="show_mobile_type_summary">Where the network type label goes: off, inside the ring, or drawn separately outside the ring.</string>
+    <string name="mobile_type_off">Off</string>
+    <string name="mobile_type_inside">In the ring</string>
+    <string name="mobile_type_outside">Outside the ring</string>
+
+    <string name="signal_mode_title">Signal position</string>
+    <string name="signal_mode_summary">Where the mobile signal reading goes: dots at the bottom of the ring, or drawn separately outside the ring.</string>
+    <string name="signal_mode_inside">Inside the ring</string>
+    <string name="signal_mode_outside">Outside the ring</string>
+
+    <string name="stacked_signal_title">Stacked signal</string>
+    <string name="stacked_signal_summary">Style switch for the out-of-ring reading: on stacks both SIMs, off shows them separately.</string>
+
+    <string name="data_sim_only_title">Data SIM only</string>
+    <string name="data_sim_only_summary">With dual SIM, only the active data SIM reading is shown; the other card is hidden. No effect on single-SIM or when the data SIM cannot be read.</string>
+
+    <string name="out_signal_size_title">Out-of-ring signal size</string>
+    <string name="out_signal_size_summary">Overall height of the out-of-ring reading. Default 15dp; range 6-20dp.</string>
+
+    <string name="out_signal_margin_title">Out-of-ring signal gap</string>
+    <string name="out_signal_margin_summary">Gap between the out-of-ring signal reading and the battery icon. Default 2dp, range 0-16dp.</string>
+
+    <string name="glyph_shift_title">Shift whole group</string>
+    <string name="glyph_shift_summary">Moves the whole trio icon left or right. 0 = default position; adjusts the trio icon right margin.</string>
+    <string name="charge_with_value_title">Show level while charging</string>
+    <string name="charge_with_value_summary">When on, the battery level is drawn next to the bolt while charging; when off, charging shows the bolt only and the level is hidden.</string>
+    <string name="charge_value_size_title">Bolt and level size</string>
+    <string name="charge_value_size_summary">Font size for the bolt-plus-level pair. Default 30, range 30-36.</string>
+    <string name="glyph_left_offset_title">Group left offset</string>
+    <string name="glyph_left_offset_summary">Distance from the native status bar icons to the trio icon. Default 0, range -8.0 to +8.0dp.</string>
+
+    <string name="burn_in_protect_title">Drift the icons</string>
+    <string name="burn_in_protect_summary">Lets the trio and out-of-ring icons drift within a tiny range so the same pixels are not lit for long stretches. Default on.</string>
+    <string name="burn_in_amplitude_title">Drift amplitude</string>
+    <string name="burn_in_amplitude_summary">How far the icon may drift from its home position, 0.25dp per step. Default 0.50dp; 0 means no movement at all. Larger values protect more, capped at 2dp.</string>
+    <string name="burn_in_period_title">Drift period</string>
+    <string name="burn_in_period_summary">Seconds for one full cycle, default 60. Shorter periods move faster.</string>
+
+    <string name="glyph_scale_title">Trio icon size</string>
+    <string name="glyph_scale_summary" formatted="false">Overall size of the trio icon, 60-130%, default 100%. Past 100% the drawing and its reserved space grow together and the icon may overflow the status bar row, in the shade as well.</string>
+    <string name="glyph_scale_summary_capped" formatted="false">Overall size of the trio icon, 60-100%, default 100%. To go past 100%, turn on "draw in its own window" first.</string>
+
+    <string name="perf_temp_title">Battery temperature</string>
+    <string name="perf_temp_summary">Shows the battery temperature next to the battery icon.</string>
+    <string name="perf_outer_margin_title">Temperature reading margin</string>
+    <string name="perf_outer_margin_summary" formatted="false">Gap between the temperature reading and the neighbour on its left. Default 2dp, range 0-16dp.</string>
+    <string name="perf_outer_margin_right_title">Temperature reading right margin</string>
+    <string name="perf_outer_margin_right_summary" formatted="false">Gap between the temperature reading and the trio icon on its right. Default 2dp, range 0-16dp.</string>
+    <string name="perf_scale_title">Readout size</string>
+    <string name="perf_scale_summary" formatted="false">Scales the whole reading up or down on top of the automatic font size, 60-150%, default 100%.</string>
+    <string name="perf_weight_title">Readout weight</string>
+    <string name="perf_weight_summary">Stroke weight of the reading text, range 100-900.</string>
+
+    <string name="value_centre_title">Centre the percentage</string>
+    <string name="value_centre_summary">Enlarges the battery level into the middle of the ring, where it always takes priority. The Wi-Fi arcs shrink into the top notch, and while charging a small bolt takes the notch (no Wi-Fi arcs then).</string>
+
+    <string name="color_role_title">State colors</string>
+    <string name="color_role_summary">Pick colors for low battery, charging and critical battery.</string>
+
+    <string name="color_low_title">Low battery color</string>
+    <string name="color_charging_title">Charging color</string>
+    <string name="color_critical_title">Critical battery color</string>
+    <string name="color_field_summary">Tap to pick a color</string>
+    <string name="color_on_dark">Dark background</string>
+    <string name="color_on_light">Light background</string>
+    <string name="color_dialog_summary">Set the color used when the status bar sits on a dark or a light background.</string>
+    <string name="color_reset">Reset to default</string>
+    <string name="color_reset_summary">Restore the three state colors to their factory presets.</string>
+    <string name="color_reset_dialog_summary">All three state colors go back to their factory presets; your custom colors will be overwritten.</string>
+    <string name="color_reset_confirm">Reset</string>
+
+    <string name="low_threshold_title">Low battery threshold</string>
+    <string name="power_save_color_title">Power save tint</string>
+    <string name="power_save_color_summary" formatted="false">When on, the battery ring turns the low-battery yellow while the system is in power save mode. When off, the trio battery colour stays as it is. Default on.</string>
+    <string name="low_threshold_summary">Switch to the low battery color below this percentage.</string>
+
+    <string name="stroke_title">Ring stroke</string>
+    <string name="stroke_summary">Stroke width of the battery ring.</string>
+    <string name="stroke_title_rect">Bar thickness</string>
+    <string name="stroke_summary_rect">Thickness of the battery bar along the bottom.</string>
+
+    <string name="arc_stroke_title">Arc stroke</string>
+    <string name="arc_stroke_summary">Stroke width of the Wi-Fi arcs.</string>
+    <string name="arc_stroke_summary_rect">Width of the Wi-Fi arc stroke.</string>
+
+    <string name="value_size_title">Number size</string>
+    <string name="value_size_summary">Size of the percentage text. With "centre the level" on, the centred digits grow up to 1.4x and stop at 38.</string>
+
+    <string name="value_weight_title">Number weight</string>
+    <string name="value_weight_summary">Stroke weight of the battery level, range 100-900.</string>
+
+    <string name="type_size_title">Network type size</string>
+    <string name="type_size_summary">Font size of the 3G/4G/5G label in the ring centre.</string>
+
+    <string name="out_type_size_title">Out-of-ring type size</string>
+    <string name="out_type_size_summary">Size of the out-of-ring 3G/4G/5G label in the status bar. Default 14dp, range 8-26dp.</string>
+
+    <string name="out_type_margin_left_title">Out-of-ring type margin, left</string>
+    <string name="out_type_margin_left_summary">Gap between the out-of-ring signal reading and the 5G label. Default 2dp, range 0-16dp.</string>
+
+    <string name="out_type_margin_right_title">Out-of-ring type margin, right</string>
+    <string name="out_type_margin_right_summary">Gap between the 5G label and the icon on its right. Default 2dp, range 0-16dp.</string>
+
+    <string name="type_suffix_scale_title">The A in 5GA</string>
+    <string name="type_suffix_scale_summary">When the network type ends in A (5GA), the trailing A as a percentage of the main size. Default 65%, range 50-100%; applies both inside and outside the ring.</string>
+
+    <string name="type_weight_title">Network type weight</string>
+    <string name="type_weight_summary">Stroke weight of the network type, range 100-900.</string>
+
+    <string name="track_alpha_title">Track opacity</string>
+    <string name="track_alpha_summary">Opacity of the unlit parts of the glyph.</string>
+
+    <string name="debug_title">Debug log</string>
+    <string name="debug_summary">Write verbose output to the LSPosed log. Enable only when diagnosing.</string>
+
+    <string name="about_activated">Activated</string>
+    <string name="about_inactive">Inactive</string>
+    <string name="about_inactive_hint">Enable the module in LSPosed</string>
+    <string name="about_module_version">Module version: %1$s</string>
+    <string name="about_scope_count">Scoped apps</string>
+    <string name="about_enabled_count">Enabled toggles</string>
+    <string name="preview_title">Preview</string>
+    <string name="preview_charging">Charging</string>
+    <string name="preview_quick_charge">Fast</string>
+    <string name="preview_normal">Normal</string>
+    <string name="preview_no_wifi">No Wi-Fi</string>
+    <string name="preview_low">Saver</string>
+    <string name="preview_critical">Critical</string>
+    <string name="preview_out_type">Out type</string>
+    <string name="preview_out_signal">Out signal</string>
+    <string name="about_title">About</string>
+    <string name="about_summary">SamsungDuo · an iPhone-Duo style trio status bar icon</string>
+
+    <string name="info_module_version">App version</string>
+    <string name="info_framework">Xposed framework</string>
+    <string name="info_author">Author</string>
+    <string name="info_author_name">Sunshine丶Jason</string>
+    <string name="info_scope">Scope</string>
+    <string name="info_system_version">System version</string>
+    <string name="info_android_version">Android version</string>
+    <string name="info_device_model">Device model</string>
+    <string name="info_unknown">Unknown</string>
+
+    <string name="update_title">Check for updates</string>
+    <string name="update_summary_idle">Fetches the newest release from GitHub.</string>
+    <string name="update_checking">Checking…</string>
+    <string name="update_uptodate">Up to date — %1$s</string>
+    <string name="update_available">Version %1$s is available</string>
+    <string name="update_available_summary">Installed %1$s · %2$s</string>
+    <string name="update_download">Download</string>
+    <string name="update_downloading">Downloading %1$d%%</string>
+    <string name="update_ready">The new version has been downloaded.</string>
+    <string name="update_ready_summary">Android will ask you to confirm before installing.</string>
+    <string name="update_install">Install</string>
+    <string name="update_retry">Retry</string>
+    <string name="update_failed">Could not check for updates</string>
+    <string name="update_no_release">No release has been published yet</string>
+    <string name="update_permission_needed">SamsungDuo needs permission to install apps; the settings page has been opened for you.</string>
+    <string name="update_install_failed">No app on this device can handle the install.</string>
+    <string name="update_release_page">Open release page</string>
+    <string name="repo_home_title">View repository</string>
+    <string name="repo_home_summary">Source, release history and issue tracker for this project.</string>
+    <string name="update_repo">View the open-source repo</string>
+    <string name="update_repo_summary">Read the source and the docs on GitHub.</string>
+
+    <string name="restart_title">Restart System UI</string>
+    <string name="restart_summary">Restarting System UI reloads the module, which is what to do after installing it or when System UI misbehaves. It needs root access; System UI disappears for a moment and comes back on its own, without interrupting running apps.</string>
+    <string name="restart_confirm">Restart</string>
+    <string name="restart_running">Restarting…</string>
+    <string name="restart_done">System UI restarted</string>
+    <string name="restart_failed">Restart failed — make sure root access was granted</string>
+    <string name="cancel">Cancel</string>
+
+    <!-- Tooltip on a row greyed out by another setting; %1$s is that setting's name. -->
+    <string name="gate_hint">Turn on &quot;%1$s&quot; first</string>
+</resources>

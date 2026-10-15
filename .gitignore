@@ -1,0 +1,91 @@
+# ---------------------------------------------------------------------------
+# Local toolchain (.tools) is ~2.4 GB (JDK, Android SDK, Gradle dist, caches).
+# Only the two pieces a fresh clone actually needs to build are tracked:
+#   .tools/maven/        vendored io.github.libxposed:*:102.0.0 artifacts,
+#                        referenced first in settings.gradle.kts so --offline works
+#   .tools/debug.keystore  the signing key app/build.gradle.kts points at
+# ---------------------------------------------------------------------------
+/.tools/*
+!/.tools/maven
+!/.tools/debug.keystore
+
+# Reference material and decompiled MiuiSystemUI (analysis only, ~800 MB)
+/.ref/
+/work/
+/commonMain/
+
+# Scratch space: decompiled sources, uiautomator dumps, screenshots from
+# on-device verification. Nothing here is needed to build.
+/.tmp/
+
+# Build output
+/build/
+/app/build/
+/dist/
+/.gradle/
+/.kotlin/
+*.apk
+*.apks
+*.idsig
+*.hprof
+
+# Machine-specific SDK path
+local.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# ---------------------------------------------------------------------------
+# ★ v85 上传公开仓库时的清理：本目录是开发机，根目录堆了一整轮实机迭代的素材。
+# 反编译产物体积以 GB 计（三星 SystemUI 的 dex），公开既有版权风险也拖垮 clone，
+# 一律不进仓库；需要时从开发机本地取。
+# ---------------------------------------------------------------------------
+
+# 反编译 / 参考素材（SystemUI、Launcher、SFC 固件的 dex 与 dump）
+/_ref/
+/_ref2/
+/_ref3/
+/_sfc/
+/_v67chk/
+/hyperduo_src/
+/hyperduo_up/
+/HyperDuo-S25U/
+/dexout/
+/build_offline/
+/new_dex_dump.txt
+/platform-*.zip
+
+# 实机验证截图、录屏抽帧、调试日志、临时脚本
+/_*.png
+/_*.txt
+/bar_*.png
+/frames/
+/dbg*.log
+/SamsungDuo_debug.log
+/*.mp4
+/measure_bar.py
+/preview_align*.py
+/preview_align*.png
+/preview_charge_value*.py
+/preview_charge_value*.png
+/video_*.py
+/strings_all.txt
+
+# 开发机本地构建脚本与日志（可移植的构建路径是 .github/workflows/build.yml）
+/build.ps1
+/build_apk.bat
+/build_complete.bat
+/build_log*.txt
+/env.ps1
+/install.ps1
+/integrate.py
+/release-module.ps1
+/1003-todo.md
+/.zcodeignore

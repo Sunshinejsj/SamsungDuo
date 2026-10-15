@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Only the settings app talks to the network, to ask GitHub for the newest
+         release. The hooked SystemUI process never gets this permission because
+         it is granted per-package, and the hooks make no network calls. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Declaring this is what lets PackageManager.canRequestPackageInstalls()
+         ever answer true; without it the check is false forever and the updater
+         cannot even hand the downloaded APK to the system installer. It grants no
+         ability to install silently: the user still confirms in the system dialog,
+         and on MIUI they must first flip "install unknown apps" for this app. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- 历史遗留：早期版本叠加层用 TYPE_APPLICATION_OVERLAY 时需要悬浮窗权限。
+         现版本窗口类型用 TYPE_STATUS_BAR_SUB_PANEL(2040)（与状态栏 Context 匹配），
+         已不依赖该权限；保留声明以便将来切换窗口类型，且不影响 SystemUI 进程。 -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- miuix-blur declares android:minSdkVersion="33" because its effects need
+         RuntimeShader. We keep 29: every effect in the library is gated on
+         isRuntimeShaderSupported() at runtime and silently falls back to plain
+         drawing below API 33, so the older floor costs only the blur itself. -->
+    <uses-sdk tools:overrideLibrary="top.yukonga.miuix.kmp.blur" />
+
+    <application
+        android:name=".HyperDuoApp"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+
+        <meta-data
+            android:name="xposedminversion"
+            android:value="102" />
+        <meta-data
+            android:name="xposeddescription"
+            android:value="@string/xposed_description" />
+        <meta-data
+            android:name="xposedscope"
+            android:resource="@array/xposed_scope" />
+        <meta-data
+            android:name="libxposed"
+            android:value="true" />
+
+        <!-- LSPosed / Vector manager entry point. -->
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="de.robv.android.xposed.category.MODULE_SETTINGS" />
+            </intent-filter>
+        </activity>
+
+        <!-- Launcher entry point so the settings app can also be opened directly. -->
+        <activity-alias
+            android:name=".ui.MainActivityAlias"
+            android:enabled="true"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:icon="@mipmap/ic_launcher"
+            android:targetActivity=".ui.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Serves the downloaded APK to the system installer. The installer is a
+             different process, so a plain file:// path would be refused on every
+             supported Android version. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+
+</manifest>

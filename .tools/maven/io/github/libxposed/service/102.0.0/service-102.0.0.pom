@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>io.github.libxposed</groupId>
+  <artifactId>service</artifactId>
+  <version>102.0.0</version>
+  <packaging>aar</packaging>
+  <dependencies>
+    <dependency>
+      <groupId>io.github.libxposed</groupId>
+      <artifactId>interface</artifactId>
+      <version>102.0.0</version>
+      <scope>compile</scope>
+    </dependency>
+  </dependencies>
+</project>

@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SamsungDuo</string>
+    <string name="xposed_description">把状态栏的 Wi-Fi、移动信号与电池合并为一个仿 iPhone Duo 的三合一体图标。</string>
+
+    <string name="group_appearance">外观</string>
+    <string name="group_geometry">尺寸</string>
+    <string name="group_colors">颜色</string>
+
+    <string name="group_stroke">描边</string>
+    <string name="group_text">文字</string>
+    <string name="group_type">网络类型</string>
+    <string name="group_perf">电池读数</string>
+    <string name="group_spacing">间距</string>
+    <string name="group_burn_in">防烧屏</string>
+    <string name="group_out_signal">环外信号</string>
+    <string name="group_track">底纹</string>
+
+    <string name="tab_general">常规</string>
+
+    <string name="master_title">启用三合一图标</string>
+    <string name="master_summary">总开关。关闭后隐藏本模块额外绘制的三合一图标；系统原机图标不受影响。</string>
+
+    <string name="trio_style_title">三合一样式</string>
+    <string name="trio_style_summary">选择三合一的排布方式。圆环是默认样式；矩形改用左右两列信号点夹住中间内容，底部横贯一条电量条。</string>
+    <string name="trio_style_ring">圆环</string>
+    <string name="trio_style_rect">矩形</string>
+
+    <string name="overlay_title">独立窗口绘制</string>
+    <string name="overlay_summary">使三合一图标不再受状态栏窗口高度限制。关闭后回到状态栏内绘制。同时是三合一图标整体尺寸限制开关，只有开启时才能调到 100–130%，关闭时最大 100%。</string>
+
+    <string name="show_wifi_title">显示 Wi-Fi 弧</string>
+    <string name="show_wifi_summary">在圈内显示 Wi-Fi 弧线，弧数跟随实际信号强度；关闭后不显示。</string>
+
+    <string name="show_mobile_title">显示移动信号点</string>
+    <string name="show_mobile_summary">在底部显示四个电平点表示移动网络信号强度；关闭后不显示。</string>
+
+    <string name="dual_sim_title">双卡信号</string>
+    <string name="dual_sim_summary">无 Wi-Fi 且未充电时，显示上下两排信号点：上排为卡一，下排为卡二。只在双卡时生效；单卡或正在充电时仍只显示一排，显示当前上网卡。</string>
+
+    <string name="show_value_title">显示电量数字</string>
+    <string name="show_value_summary">在环内显示电量百分比；充电时改为闪电图标。关闭后不显示。</string>
+
+    <string name="show_bolt_title">充电时显示闪电</string>
+    <string name="show_bolt_summary">关闭后不再用环内闪电图标</string>
+
+    <string name="show_mobile_type_title">网络类型</string>
+    <string name="show_mobile_type_summary">选择网络类型文字的显示位置：关闭、圆环内、圆环外额外绘制。</string>
+    <string name="mobile_type_off">关闭</string>
+    <string name="mobile_type_inside">环内</string>
+    <string name="mobile_type_outside">环外</string>
+
+    <string name="signal_mode_title">信号位置</string>
+    <string name="signal_mode_summary">选择移动信号读数的显示位置。底部圆环修改为圆点显示、圆环外额外绘制。</string>
+    <string name="signal_mode_inside">环内</string>
+    <string name="signal_mode_outside">环外</string>
+
+    <string name="stacked_signal_title">堆叠信号</string>
+    <string name="stacked_signal_summary">环外时显示样式开关：开启为双卡堆叠显示，关闭为双卡分别显示。</string>
+
+    <string name="data_sim_only_title">仅显示上网卡</string>
+    <string name="data_sim_only_summary">双卡时只显示当前上网卡的读数，另一张卡不显示。单卡或读不到上网卡时不受影响。</string>
+
+    <string name="out_signal_size_title">环外信号大小</string>
+    <string name="out_signal_size_summary">环外读数的整体高度。默认值15dp；可调范围 6–20dp。</string>
+
+    <string name="out_signal_margin_title">环外信号间距</string>
+    <string name="out_signal_margin_summary">环外信号与电池图标之间的空隙。默认 2dp，可调范围 0–16dp。</string>
+
+    <string name="glyph_shift_title">整组左右平移</string>
+    <string name="glyph_shift_summary">整体左右移动三合一图标。0 = 默认位置；可调整三合一图标的右边距。</string>
+    <string name="charge_with_value_title">充电时同时显示电量</string>
+    <string name="charge_with_value_summary">开启时在闪电旁边同时显示电量数字，关闭时充电只显示闪电，隐藏电量显示。</string>
+    <string name="charge_value_size_title">闪电与电量字号</string>
+    <string name="charge_value_size_summary">调整"闪电＋电量"的字号，默认 30，可调范围30–36。</string>
+    <string name="glyph_left_offset_title">整组左侧间距</string>
+    <string name="glyph_left_offset_summary">调整原生状态栏到三合一图标的距离。默认 0，可调范围 -8.0～+8.0dp。</string>
+
+    <string name="burn_in_protect_title">图标微动</string>
+    <string name="burn_in_protect_summary">让三合一与环外图标在极小范围内缓慢游走，避免同一批像素长期发光留下残影。默认开启。</string>
+    <string name="burn_in_amplitude_title">微动幅度</string>
+    <string name="burn_in_amplitude_summary">图标偏离原位的最大距离，每格 0.25dp。默认 0.50dp；调到 0 完全不动。幅度越大保护越彻底，限制不超过 2dp 。</string>
+    <string name="burn_in_period_title">微动周期</string>
+    <string name="burn_in_period_summary">走完一个完整周期所需的秒数，默认 60 秒。周期越短移动越快。</string>
+
+    <string name="glyph_scale_title">三合一图标尺寸</string>
+    <string name="glyph_scale_summary" formatted="false">整个三合一图标大小调整，可调范围 60–130%，默认 100% ，超过 100% 时图形与占位一起放大，允许溢出状态栏行，下拉面板同样放开。</string>
+    <string name="glyph_scale_summary_capped" formatted="false">整个三合一图标大小调整，可调范围 60–100%，默认 100% ，想要突破 100% 大小限制，请先打开「独立窗口绘制」开关。</string>
+
+    <string name="perf_temp_title">电池温度</string>
+    <string name="perf_temp_summary">在电池图标旁显示电池温度。</string>
+    <string name="perf_outer_margin_title">温度读数边距</string>
+    <string name="perf_outer_margin_summary" formatted="false">温度读数与左侧邻居之间的空隙。默认 2dp，可调范围 0–16dp。</string>
+    <string name="perf_outer_margin_right_title">温度读数右边距</string>
+    <string name="perf_outer_margin_right_summary" formatted="false">温度读数与右侧三合一之间的空隙。默认 2dp，可调范围 0–16dp。</string>
+    <string name="perf_scale_title">读数整体尺寸</string>
+    <string name="perf_scale_summary" formatted="false">在自动字号之上再把读数整体放大或缩小，百分比 60–150%，默认 100%。</string>
+    <string name="perf_weight_title">读数字重</string>
+    <string name="perf_weight_summary">读数文字的笔画粗细，可调范围100-900。</string>
+
+    <string name="value_centre_title">电量数字居中</string>
+    <string name="value_centre_summary">电量数字放大到圆环中间并始终优先占据圆心。Wi-Fi 弧缩到顶部缺口，充电时改用小的闪电占用缺口（此时不显示 Wi-Fi 弧）。</string>
+
+    <string name="color_role_title">状态颜色</string>
+    <string name="color_role_summary">分别为低电量、充电与危险电量指定颜色。</string>
+
+    <string name="color_low_title">低电量颜色</string>
+    <string name="color_charging_title">充电颜色</string>
+    <string name="color_critical_title">危险电量颜色</string>
+    <string name="color_field_summary">点按选择颜色</string>
+    <string name="color_on_dark">深色背景</string>
+    <string name="color_on_light">浅色背景</string>
+    <string name="color_dialog_summary">分别设置状态栏为深色与浅色背景时使用的颜色。</string>
+    <string name="color_reset">恢复默认</string>
+    <string name="color_reset_summary">把三种状态颜色恢复为出厂预设。</string>
+    <string name="color_reset_dialog_summary">三种状态颜色都会回到出厂预设，当前的自定义颜色会被覆盖。</string>
+    <string name="color_reset_confirm">恢复</string>
+
+    <string name="low_threshold_title">低电量阈值</string>
+    <string name="power_save_color_title">省电模式变色</string>
+    <string name="power_save_color_summary" formatted="false">开启后，系统进入省电模式时电量环会变成低电量的黄色。关闭后三合一电量颜色保持不变。默认开启。</string>
+    <string name="low_threshold_summary">电量低于该值时切换到低电量颜色。</string>
+
+    <string name="stroke_title">环线粗细</string>
+    <string name="stroke_summary">电池圆环的描边宽度。</string>
+    <string name="stroke_title_rect">电量条粗细</string>
+    <string name="stroke_summary_rect">底部电量条的厚度。</string>
+
+    <string name="arc_stroke_title">弧线粗细</string>
+    <string name="arc_stroke_summary">Wi-Fi 弧线的描边宽度。</string>
+    <string name="arc_stroke_summary_rect">Wi-Fi 弧线的描边宽度。</string>
+
+    <string name="value_size_title">数字字号</string>
+    <string name="value_size_summary">电量百分比文字的尺寸。注意「电量数字居中」打开时，居中的数字最大放大到原值的 1.4 倍，38 及以上不再变大。</string>
+
+    <string name="value_weight_title">数字字重</string>
+    <string name="value_weight_summary">电量数字的笔画粗细，可调范围100-900。</string>
+
+    <string name="type_size_title">网络类型字号</string>
+    <string name="type_size_summary">圆环中间 3G/4G/5G 等文字的大小。</string>
+
+    <string name="out_type_size_title">环外网络类型字号</string>
+    <string name="out_type_size_summary">状态栏中环外 3G/4G/5G 等文字的大小，默认 14dp，可调范围 8–26dp。</string>
+
+    <string name="out_type_margin_left_title">环外类型左边距</string>
+    <string name="out_type_margin_left_summary">环外信号读数与 5G 类型标签之间的空隙。默认 2dp，可调范围 0–16dp。</string>
+
+    <string name="out_type_margin_right_title">环外类型右边距</string>
+    <string name="out_type_margin_right_summary">5G 类型标签与右侧图标之间的空隙。默认 2dp，可调范围 0–16dp。</string>
+
+    <string name="type_suffix_scale_title">5GA 中 A 的比例</string>
+    <string name="type_suffix_scale_summary">网络类型以 A 结尾时（如 5GA），末尾的 A 相对主字号的百分比。默认 65%，可调范围 50–100%；环内与环外两处同时生效。</string>
+
+    <string name="type_weight_title">网络类型字重</string>
+    <string name="type_weight_summary">网络类型的笔画粗细，可调范围100-900。</string>
+
+    <string name="track_alpha_title">底纹浓度</string>
+    <string name="track_alpha_summary">未点亮部分的透明度。</string>
+
+    <string name="debug_title">调试日志</string>
+    <string name="debug_summary">把详细过程写入 LSPosed 日志，排查问题时开启。</string>
+
+    <string name="about_activated">已激活</string>
+    <string name="about_inactive">未激活</string>
+    <string name="about_inactive_hint">请在 LSPosed 中启用模块</string>
+    <string name="about_module_version">模块版本：%1$s</string>
+    <string name="about_scope_count">作用域应用</string>
+    <string name="about_enabled_count">已开启显示项</string>
+    <string name="preview_title">效果预览</string>
+    <string name="preview_charging">充电</string>
+    <string name="preview_quick_charge">快充</string>
+    <string name="preview_normal">正常</string>
+    <string name="preview_no_wifi">无 Wi-Fi</string>
+    <string name="preview_low">省电</string>
+    <string name="preview_critical">危险</string>
+    <string name="preview_out_type">环外类型</string>
+    <string name="preview_out_signal">环外信号</string>
+    <string name="about_title">关于</string>
+    <string name="about_summary">SamsungDuo · 仿 iPhone Duo 三合一状态栏图标</string>
+
+    <string name="info_module_version">应用版本</string>
+    <string name="info_author">作者</string>
+    <string name="info_author_name">Sunshine丶Jason</string>
+    <string name="info_framework">Xposed 框架</string>
+    <string name="info_scope">作用域</string>
+    <string name="info_system_version">系统版本</string>
+    <string name="info_android_version">Android 版本</string>
+    <string name="info_device_model">设备型号</string>
+    <string name="info_unknown">未知</string>
+
+    <string name="update_title">检查更新</string>
+    <string name="update_summary_idle">从 GitHub Releases 获取最新版本。</string>
+    <string name="update_checking">正在检查…</string>
+    <string name="update_uptodate">已是最新版本 %1$s</string>
+    <string name="update_available">发现新版本 %1$s</string>
+    <string name="update_available_summary">当前版本 %1$s · %2$s</string>
+    <string name="update_download">下载更新</string>
+    <string name="update_downloading">正在下载 %1$d%%</string>
+    <string name="update_ready">新版本已下载完成。</string>
+    <string name="update_ready_summary">系统会弹出安装确认，确认后生效。</string>
+    <string name="update_install">安装</string>
+    <string name="update_retry">重试</string>
+    <string name="update_failed">检查更新失败</string>
+    <string name="update_no_release">作者尚未发布任何正式版本</string>
+    <string name="update_permission_needed">需要先允许本应用安装应用，已为你打开对应设置。</string>
+    <string name="update_install_failed">系统里找不到能处理安装的应用。</string>
+    <string name="update_release_page">打开发布页面</string>
+    <string name="repo_home_title">查看仓库</string>
+    <string name="repo_home_summary">本项目的源码、发布记录与问题反馈。</string>
+    <string name="update_repo">查看开源项目仓库</string>
+    <string name="update_repo_summary">本项目参考开源项目 HyperDuo，致谢作者 yixing233</string>
+
+    <string name="restart_title">重启系统界面</string>
+    <string name="restart_summary">重启系统界面会重新加载模块，用于刚安装模块或系统界面状态异常时。此操作需要 root 授权，系统界面会短暂消失并自动恢复，不会影响正在运行的应用。</string>
+    <string name="restart_confirm">重启</string>
+    <string name="restart_running">正在重启…</string>
+    <string name="restart_done">系统界面已重启</string>
+    <string name="restart_failed">重启失败，请确认已授予 root 权限</string>
+    <string name="cancel">取消</string>
+
+    <!-- Tooltip on a row greyed out by another setting; %1$s is that setting's name. -->
+    <string name="gate_hint">需要先打开「%1$s」</string>
+</resources>

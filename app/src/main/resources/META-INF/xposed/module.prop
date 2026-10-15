@@ -1,0 +1,5 @@
+minApiVersion=102
+targetApiVersion=102
+staticScope=true
+name=SamsungDuo
+id=com.jsj.samsungduo
