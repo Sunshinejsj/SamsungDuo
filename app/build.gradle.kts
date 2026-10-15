@@ -8,14 +8,12 @@ plugins {
 // version in the APK, the version in the About card and the version the updater
 // compares against are all the same value. A local build falls back to the
 // checked-in defaults below.
-val tagVersionName = (findProperty("hyperduoVersionName") as String?)?.takeIf { it.isNotBlank() }
-val tagVersionCode = (findProperty("hyperduoVersionCode") as String?)?.toIntOrNull()
+val tagVersionName = (findProperty("samsungDuoVersionName") as String?)?.takeIf { it.isNotBlank() }
+val tagVersionCode = (findProperty("samsungDuoVersionCode") as String?)?.toIntOrNull()
 
 android {
-    // io.github.* because LSPosed's module repo verifies a reverse-domain id
-    // against a DNS TXT record for the root domain: hyperduo.com is registered
-    // by someone else, so anything under it would fail the check. The
-    // io.github.<user> form needs no domain and no TXT record.
+    // The module id is a plain reverse-domain id; it needs no DNS TXT record
+    // verification because we use our own com.jsj.samsungduo namespace.
     namespace = "com.jsj.samsungduo"
     // Bumped to 37: the pinned deps (Compose 1.12.0, core-ktx 1.19.0,
     // material3 1.5.0-alpha22, libxposed 102.0.0) all declare minCompileSdk 37
@@ -26,7 +24,7 @@ android {
 
     defaultConfig {
         // Changing this makes the module a different app to Android: an existing
-        // com.hyperduo.trio install cannot be updated in place, and its settings
+        // install of this module cannot be updated in place, and its settings
         // and LSPosed scope entry do not carry over. Uninstall the old one first.
         applicationId = "com.jsj.samsungduo"
         minSdk = 29
@@ -38,7 +36,7 @@ android {
     signingConfigs {
         // Same keystore the hand-rolled pipeline used, so that in-place updates
         // over the already-installed module keep working.
-        create("hyperduo") {
+        create("release") {
             storeFile = rootProject.file(".tools/debug.keystore")
             storePassword = "android"
             keyAlias = "hyperduo"
@@ -49,7 +47,7 @@ android {
     buildTypes {
         debug {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("hyperduo")
+            signingConfig = signingConfigs.getByName("release")
         }
         release {
             isMinifyEnabled = true
@@ -58,7 +56,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            signingConfig = signingConfigs.getByName("hyperduo")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 

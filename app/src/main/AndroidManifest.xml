@@ -25,7 +25,7 @@
     <uses-sdk tools:overrideLibrary="top.yukonga.miuix.kmp.blur" />
 
     <application
-        android:name=".HyperDuoApp"
+        android:name=".SamsungDuoApp"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"

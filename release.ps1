@@ -97,8 +97,8 @@ $env:ANDROID_SDK_ROOT = 'C:\Android\Sdk'
 
 $build = Invoke-Native (Join-Path $Root 'gradlew.bat') @(
     ':app:assembleRelease', '--offline', '--console=plain',
-    "-PhyperduoVersionName=$Version",
-    "-PhyperduoVersionCode=$VersionCode"
+    "-PsamsungDuoVersionName=$Version",
+    "-PsamsungDuoVersionCode=$VersionCode"
 )
 $build.Output -split "`n" |
     Where-Object { $_ -match '^BUILD |^FAILURE|error:' } |

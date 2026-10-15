@@ -97,8 +97,8 @@ jobs:
         run: |
           args=(--no-daemon assembleRelease --console=plain)
           if [ -n "${{ steps.stamp.outputs.name }}" ]; then
-            args+=(-PhyperduoVersionName="${{ steps.stamp.outputs.name }}"
-                   -PhyperduoVersionCode="${{ steps.stamp.outputs.code }}")
+            args+=(-PsamsungDuoVersionName="${{ steps.stamp.outputs.name }}"
+                   -PsamsungDuoVersionCode="${{ steps.stamp.outputs.code }}")
           fi
           gradle "${args[@]}"
 
