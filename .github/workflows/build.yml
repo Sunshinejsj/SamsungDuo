@@ -1,0 +1,130 @@
+# Builds the module on GitHub's Linux runners.
+#
+# Two paths into a release, both producing the same APK:
+#   * push a `v*` tag          -> build, stamp the version from the tag, publish a
+#                                 full Release with the APK attached. This is the
+#                                 path the in-app updater reads
+#                                 (releases/latest), so the tag IS the version.
+#   * push to any branch       -> build only, as a check. Nothing is published.
+#
+# The repository's own pipeline (release.ps1) is deliberately offline: it drives a
+# local JDK and Android SDK. A runner has neither, so this workflow uses the Gradle
+# build the repository already declares - it needs nothing beyond the checkout, the
+# tracked .tools/maven repository and public Maven artifacts.
+#
+# The APK is signed with the tracked .tools/debug.keystore, the same key the
+# offline pipeline uses, so it installs in place over an existing install.
+name: build
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Android SDK platform 37 + build-tools
+        run: |
+          set -x
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          TOOLS="$(ls -1d "$SDK"/cmdline-tools/*/bin 2>/dev/null | tail -1)"
+          export PATH="$TOOLS:$PATH"
+          # The image already ships cmdline-tools; android-actions/setup-android is
+          # not used because it insists on installing the retired "tools" package,
+          # which no longer exists in the repository and fails the step outright.
+          #
+          # API 37 also ships as minor releases: there is no "platforms;android-37",
+          # only 37.0 / 37.1 / 37.2.
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager --install "platforms;android-37.0" "build-tools;37.0.0" \
+            || sdkmanager --channel=3 --install "platforms;android-37.2" "build-tools;37.0.0"
+          ls -1 "$SDK/platforms"
+          # compileSdk 37 reads the platform directory named android-37, while the
+          # package installs as android-37.<minor>: make one name point at the other
+          # instead of pinning the build to whichever minor happens to be current.
+          if [ ! -d "$SDK/platforms/android-37" ]; then
+            minor=$(ls -1d "$SDK"/platforms/android-37.* 2>/dev/null | head -1)
+            if [ -n "$minor" ]; then
+              ln -sfn "$(basename "$minor")" "$SDK/platforms/android-37"
+            fi
+          fi
+          ls -l "$SDK/platforms"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.8.0'
+
+      # The tag is the version: refs/tags/v9.4 -> versionName 9.4, versionCode 94
+      # (major*10 + minor, the same rule app/build.gradle.kts uses for its
+      # checked-in default). A branch push has no tag, so it keeps the checked-in
+      # default and is never published.
+      - name: Resolve version from the tag
+        id: stamp
+        run: |
+          ref="${GITHUB_REF_NAME}"
+          if [[ "$ref" =~ ^v([0-9]+)\.([0-9]+)$ ]]; then
+            name="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+            code=$(( ${BASH_REMATCH[1]} * 10 + ${BASH_REMATCH[2]} ))
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            name=""
+            code=""
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "tag=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Build release APK
+        run: |
+          args=(--no-daemon assembleRelease --console=plain)
+          if [ -n "${{ steps.stamp.outputs.name }}" ]; then
+            args+=(-PhyperduoVersionName="${{ steps.stamp.outputs.name }}"
+                   -PhyperduoVersionCode="${{ steps.stamp.outputs.code }}")
+          fi
+          gradle "${args[@]}"
+
+      - name: Collect
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk \
+             "dist/SamsungDuo-${{ steps.stamp.outputs.name || 'dev' }}.apk"
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SamsungDuo-${{ steps.stamp.outputs.name || 'dev' }}
+          path: dist/*.apk
+          if-no-files-found: error
+
+      # ★ v85：tag push 才发布，且必须是正式 Release —— app 里的 updater 读
+      #   releases/latest，那个接口不返回 draft 与 prerelease。
+      #   资源名必须是 .apk，parseRelease 取第一个 apk asset。
+      - name: Publish a release for the APK
+        if: steps.stamp.outputs.publish == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.stamp.outputs.tag }}
+          name: SamsungDuo ${{ steps.stamp.outputs.name }}
+          files: dist/*.apk
+          draft: false
+          prerelease: false
+          generate_release_notes: true

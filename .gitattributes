@@ -1,0 +1,18 @@
+# Normalise line endings for text, never touch binary.
+* text=auto
+
+# Scripts are authored on Windows but run fine either way.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.sh  text eol=lf
+
+# Explicitly binary
+*.keystore binary
+*.jks      binary
+*.apk      binary
+*.aar      binary
+*.jar      binary
+*.idsig    binary
+*.png      binary
+*.jpg      binary
+*.webp     binary

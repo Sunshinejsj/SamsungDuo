@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only the updater's own download directory is shared, and only for reading:
+     the installer needs nothing else, and a narrower grant cannot be abused by a
+     release that swaps in a different file name. -->
+<paths>
+    <cache-path name="updates" path="updates/" />
+</paths>
