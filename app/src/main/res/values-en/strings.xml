@@ -210,6 +210,15 @@
     <string name="update_repo">View the open-source repo</string>
     <string name="update_repo_summary">Read the source and the docs on GitHub.</string>
 
+    <string name="config_export_title">Export settings</string>
+    <string name="config_export_summary">Save every setting to a file you can back up or restore on another device.</string>
+    <string name="config_import_title">Import settings</string>
+    <string name="config_import_summary">Restore every setting from a file exported earlier. Takes effect immediately.</string>
+    <string name="config_export_done">Settings exported</string>
+    <string name="config_export_failed">Export failed</string>
+    <string name="config_import_done">Settings imported</string>
+    <string name="config_import_failed">That file is not a valid settings file</string>
+
     <string name="restart_title">Restart System UI</string>
     <string name="restart_summary">Restarting System UI reloads the module, which is what to do after installing it or when System UI misbehaves. It needs root access; System UI disappears for a moment and comes back on its own, without interrupting running apps.</string>
     <string name="restart_confirm">Restart</string>
