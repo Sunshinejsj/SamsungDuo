@@ -71,7 +71,7 @@ $env:ANDROID_HOME = 'C:\Android\Sdk'
 
 ## 发布与在线更新
 
-版本号两个数都在 `app/build.gradle.kts`：`versionCode` 与 `versionName`（如 94 / 9.4）。
+版本号两个数都在 `app/build.gradle.kts`：`versionCode` 与 `versionName`（如 95 / 9.5）。
 发版用仓库里的脚本（构建 → aapt2 核对版本 → 打 tag → 建正式 Release → 传 APK）：
 
 ```powershell
