@@ -26,8 +26,8 @@ import java.util.Locale
  * that the checker talks to and the one the "release page" button opens can
  * never drift apart.
  *
- * <p>★ v85：从上游 `yixing233/HyperDuo`（MIUI 原版，本项目只是移植参考）换成本项目
- * 自己的仓库。不换的后果：更新检查会去问上游的发布页，把原版 APK 推给用户。
+ * <p>★ v85：更新检查改为指向本项目自己的仓库，不再指向上游参考项目。否则更新检查会去
+ * 问上游的发布页，把原版 APK 推给用户。
  * 发布规则（updater 的判定逻辑，见 [parseRelease] / [isNewer]）：
  * tag = `v` + versionName；必须是正式 Release（prerelease/draft 不在
  * `releases/latest` 里）；必须挂一个 `.apk` 资源。
@@ -47,7 +47,7 @@ internal const val RELEASES_PAGE = "https://github.com/$REPO/releases"
 internal const val REPO_HOME = "https://github.com/$REPO"
 
 /**
- * ★ v85：上游参考项目（MIUI 原版 HyperDuo）。本项目是从它移植的，设置页"关于"里
+ * ★ v85：上游参考项目（本模块移植自的 MIUI 原版方案）。设置页"关于"里
  * 那条链接指向它 —— 与 [REPO_HOME]（本项目自己的仓库）分开，免得用户点"查看开源
  * 项目仓库"结果跳到自己的仓库。
  */

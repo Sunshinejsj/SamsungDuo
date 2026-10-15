@@ -198,10 +198,10 @@ public final class TrioHooks {
                 return result;
             }
         };
-        n += hook(module, mAttached, "hyperduo-shade", reader);
+        n += hook(module, mAttached, "samsungduo-shade", reader);
         final Method mInit = Refl.method(shc, "onInit");
         if (mInit != null) {
-            n += hook(module, mInit, "hyperduo-shade-init", reader);
+            n += hook(module, mInit, "samsungduo-shade-init", reader);
         }
         return n;
     }
@@ -363,7 +363,7 @@ public final class TrioHooks {
         // 所以参数就是【普通状态栏】(statusbar/phone/PhoneStatusBarView)。
         final Method mCreated = Refl.method(frag, "onViewCreated", View.class, Bundle.class);
         if (mCreated != null) {
-            n += hook(module, mCreated, "hyperduo-view", new XposedInterface.Hooker() {
+            n += hook(module, mCreated, "samsungduo-view", new XposedInterface.Hooker() {
                 @Override
                 public Object intercept(XposedInterface.Chain chain) throws Throwable {
                     final Object result = chain.proceed();
@@ -385,7 +385,7 @@ public final class TrioHooks {
         if (iconViewCls != null) {
             final Method mAttach = Refl.method(iconViewCls, "onAttachedToWindow");
             if (mAttach != null) {
-                n += hook(module, mAttach, "hyperduo-icon-attach", new XposedInterface.Hooker() {
+                n += hook(module, mAttach, "samsungduo-icon-attach", new XposedInterface.Hooker() {
                     @Override
                     public Object intercept(XposedInterface.Chain chain) throws Throwable {
                         final Object result = chain.proceed();
@@ -575,7 +575,7 @@ public final class TrioHooks {
             log(LOG_WARN, "StatusBarIconView.setIconColor(int,boolean) missing");
             return 0;
         }
-        return hook(module, m, "hyperduo-tint", new XposedInterface.Hooker() {
+        return hook(module, m, "samsungduo-tint", new XposedInterface.Hooker() {
             @Override
             public Object intercept(XposedInterface.Chain chain) throws Throwable {
                 final Object tintObj = chain.getArg(0);

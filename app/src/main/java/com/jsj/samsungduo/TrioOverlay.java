@@ -2028,7 +2028,7 @@ public final class TrioOverlay {
 
         /** 槽位名：返回独立 slot，不与电池/信号冲突，也不会进 mIgnoredSlots。 */
         public String getSlot() {
-            return "hyperduo";
+            return "samsungduo";
         }
 
         /** 显示状态：VISIBLE→0，其余→1（与系统状态机约定一致）。 */

@@ -5,7 +5,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.util.Log
 import androidx.core.content.edit
-import com.jsj.samsungduo.HyperDuoApp
+import com.jsj.samsungduo.SamsungDuoApp
 import com.jsj.samsungduo.Prefs
 import com.jsj.samsungduo.TrioSettings
 import io.github.libxposed.service.XposedService
@@ -31,7 +31,7 @@ import io.github.libxposed.service.XposedService
 class SettingsRepository(context: Context) {
 
     private val appContext = context.applicationContext
-    private val service: XposedService? get() = HyperDuoApp.xposedService
+    private val service: XposedService? get() = SamsungDuoApp.xposedService
 
     /** The display density, needed to migrate the retired raw-pixel size key. */
     private val density: Float

@@ -208,7 +208,7 @@
     <string name="repo_home_title">查看仓库</string>
     <string name="repo_home_summary">本项目的源码、发布记录与问题反馈。</string>
     <string name="update_repo">查看开源项目仓库</string>
-    <string name="update_repo_summary">本项目参考开源项目 HyperDuo，致谢作者 yixing233</string>
+    <string name="update_repo_summary">本项目基于开源项目 HyperDuo 移植，致谢原作者 yixing233</string>
 
     <string name="restart_title">重启系统界面</string>
     <string name="restart_summary">重启系统界面会重新加载模块，用于刚安装模块或系统界面状态异常时。此操作需要 root 授权，系统界面会短暂消失并自动恢复，不会影响正在运行的应用。</string>

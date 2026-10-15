@@ -12,8 +12,8 @@ import java.util.Locale;
  * SamsungDuo — 把 Wi‑Fi 信号与移动信号合并进三星状态栏，画成仿 iPhone Duo 的三合一
  * 图标（电量环 + Wi‑Fi 弧 + 信号点），挂在右上角状态栏。
  *
- * <p>完整移植自小米 HyperDuo，但 hook 层（{@link TrioHooks}）、取数层（{@link TrioState}）、
- * 叠加层（{@link TrioOverlay}）已重写为三星 One UI 8 / Android 16 适配版。
+ * <p>本模块移植自小米 MIUI 平台的同类状态栏方案，但 hook 层（{@link TrioHooks}）、取数层
+ * （{@link TrioState}）、叠加层（{@link TrioOverlay}）已完全按三星 One UI 8 / Android 16 重写。
  *
  * <p>入口在 {@code META-INF/xposed/java_init.list} 声明；作用域在
  * {@code META-INF/xposed/scope.list}（仅 {@code com.android.systemui}）。

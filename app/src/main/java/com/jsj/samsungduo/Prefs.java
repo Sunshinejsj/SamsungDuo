@@ -25,7 +25,7 @@ public final class Prefs {
     public static final float AUTHORED_DENSITY = 3f;
 
     /** Remote-preference group name. Also the settings app's file name. */
-    public static final String NAME = "hyperduo_settings";
+    public static final String NAME = "samsungduo_settings";
 
     /**
      * Explicit broadcast the settings app sends to SystemUI after every write,

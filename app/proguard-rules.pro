@@ -1,9 +1,9 @@
 # The module entry point is named only from META-INF/xposed/java_init.list and is
 # instantiated reflectively by the framework, so it must survive shrinking AND
 # must keep its exact class name (java_init.list references it by that name).
-# IMPORTANT: keep the PORTED package name com.jsj.samsungduo, not the original
-# io.github.yixing233.hyperduo -- a stale rule for the old package silently
-# lets R8 shrink the entire hook layer, which makes the module load as a
+# IMPORTANT: keep the ported package name com.jsj.samsungduo, not the original
+# upstream package -- a stale keep rule for the old package silently lets R8
+# shrink the entire hook layer, which makes the module load as a
 # ClassNotFoundException (LSPosed shows it active but nothing is hooked).
 -keep class com.jsj.samsungduo.SamsungDuoModule { *; }
 

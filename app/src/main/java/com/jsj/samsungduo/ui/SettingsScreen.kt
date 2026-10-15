@@ -56,7 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.pm.PackageInfoCompat
-import com.jsj.samsungduo.HyperDuoApp
+import com.jsj.samsungduo.SamsungDuoApp
 import com.jsj.samsungduo.Prefs
 import com.jsj.samsungduo.R
 import com.jsj.samsungduo.TrioAppearance
@@ -252,7 +252,7 @@ fun SettingsScreen(repository: SettingsRepository) {
     // taken while the destination composes.
     val settingsState = remember { mutableStateOf(repository.read()) }
     var settings by settingsState
-    val serviceState = remember { mutableStateOf(HyperDuoApp.xposedService) }
+    val serviceState = remember { mutableStateOf(SamsungDuoApp.xposedService) }
     var service by serviceState
     var editing by remember { mutableStateOf<RoleColor?>(null) }
     var resettingColors by remember { mutableStateOf(false) }
@@ -272,8 +272,8 @@ fun SettingsScreen(repository: SettingsRepository) {
     // and every remote write have to follow it.
     DisposableEffect(repository) {
         val listener: (XposedService?) -> Unit = { service = it }
-        HyperDuoApp.addServiceListener(listener)
-        onDispose { HyperDuoApp.removeServiceListener(listener) }
+        SamsungDuoApp.addServiceListener(listener)
+        onDispose { SamsungDuoApp.removeServiceListener(listener) }
     }
 
     val context = LocalContext.current

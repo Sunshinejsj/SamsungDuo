@@ -15,7 +15,7 @@ import java.util.concurrent.CopyOnWriteArraySet
  * likes) and can die at any moment, so everything that wants to write has to go
  * through {@link #xposedService} rather than capture a reference once.
  */
-class HyperDuoApp : Application(), XposedServiceHelper.OnServiceListener {
+class SamsungDuoApp : Application(), XposedServiceHelper.OnServiceListener {
 
     override fun onCreate() {
         super.onCreate()
