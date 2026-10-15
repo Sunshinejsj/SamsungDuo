@@ -1,13 +1,12 @@
 # SamsungDuo
 
 把状态栏里的 **Wi-Fi、移动信号、电量** 合并成一个仿 iPhone「Duo」风格的三合一图标 —— 面向
-**三星 One UI 8 / Android 16** 的 LSPosed 模块。
+**三星 One UI 8.5 / Android 16** 的 LSPosed 模块。
 
 作者：**Sunshine丶Jason** · 仓库：[Sunshinejsj/SamsungDuo](https://github.com/Sunshinejsj/SamsungDuo)
 
 > 本项目移植自小米 MIUI 平台的 [HyperDuo](https://github.com/yixing233/HyperDuo)（作者 yixing233），
-> 致谢原作者。移植不是改个包名：hook 层、取色、信号格数、快充识别、三处挂载点全部按三星
-> SystemUI 重新实现，详见文末「与上游的差别」。
+> 致谢原作者。全部按三星 SystemUI 移植重新实现，详见文末「与上游的差别」。
 
 ## 效果
 
@@ -28,7 +27,12 @@
 
 ## 安装
 
-1. 安装 APK（需要允许"安装未知应用"）
+1. 从 [Releases](https://github.com/Sunshinejsj/SamsungDuo/releases) 下载最新的 `SamsungDuo-*.apk`
+   并安装（需要允许"安装未知应用"）
+   > 想直接跳到最新正式版：[releases/latest](https://github.com/Sunshinejsj/SamsungDuo/releases/latest)。
+   > Releases 只发正式版；如果还没有可用安装包，可以按 [开发文档](docs/DEVELOPMENT.md) 自行构建。
+   > v9.5 起换了签名密钥，与旧版**不同签名、无法覆盖升级**：装过旧版的请先卸载（设置会一起清掉），
+   > 再装新版。
 2. LSPosed → 模块 → 启用 **SamsungDuo**，作用域选 **系统界面（com.android.systemui）**
 3. 重启系统界面（模块里也有"重启系统界面"按钮，需要 root）
 4. 打开 App，在设置页逐项调整
