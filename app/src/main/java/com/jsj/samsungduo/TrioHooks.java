@@ -667,10 +667,20 @@ public final class TrioHooks {
      */
     static int tintFrom(View v) {
         if (v instanceof android.widget.ImageView) {
-            final android.content.res.ColorStateList csl =
-                    ((android.widget.ImageView) v).getImageTintList();
+            final android.widget.ImageView iv = (android.widget.ImageView) v;
+            final android.content.res.ColorStateList csl = iv.getImageTintList();
             if (csl != null) {
-                return csl.getDefaultColor();
+                // ★ v99：优先读"当前可见状态"的色。三星部分图标（尤其锁屏）用状态化
+                //   ColorStateList，getDefaultColor() 在默认态返回 0 导致读不到真色；
+                //   改用 getColorForState(当前 drawable 状态) 取实际显示色。
+                final int c = csl.getColorForState(v.getDrawableState(), csl.getDefaultColor());
+                if (c != 0) {
+                    return c;
+                }
+                final int d = csl.getDefaultColor();
+                if (d != 0) {
+                    return d;
+                }
             }
         }
         if (v instanceof android.widget.TextView) {
