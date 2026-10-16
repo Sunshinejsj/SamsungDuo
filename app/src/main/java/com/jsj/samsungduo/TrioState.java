@@ -255,6 +255,7 @@ final class TrioState {
                 final int t = TrioHooks.tintFrom(probe);
                 if (t != 0) {
                     mLastLiveTint = t;
+                    sLastGoodTint = t;
                     return t;
                 }
             }
@@ -292,10 +293,18 @@ final class TrioState {
         }
         try {
             final String cn = v.getClass().getName();
+            // 已知会被系统染色的原生图标类：优先返回（即便当前瞬间为 0 也返回，交由上层沿用本实例缓存）。
             if (cn.equals("com.android.systemui.statusbar.StatusBarIconView")
                     || cn.equals("com.android.systemui.statusbar.policy.NetspeedView")
                     || cn.equals("com.android.systemui.battery.BatteryMeterView")) {
                 return v;
+            }
+            // ★ v99：兜底——非容器的、已染上色的 View（覆盖三星锁屏可能用不同图标类 / 染色路径，
+            //   导致原三类硬编码名单漏命中、探针为 null 而锁屏被强制 nightMode 兜底的现象）。
+            if (!(v instanceof android.view.ViewGroup)) {
+                if (TrioHooks.tintFrom(v) != 0) {
+                    return v;
+                }
             }
             if (v instanceof android.view.ViewGroup) {
                 final android.view.ViewGroup g = (android.view.ViewGroup) v;
@@ -314,6 +323,9 @@ final class TrioState {
     private java.lang.ref.WeakReference<View> tintProbe;
     /** ★ v82b：本实例上一次成功从原生探针读到的颜色；探针暂时拿不到时沿用，绝不借其它实例（状态栏）的深色。 */
     private int mLastLiveTint = 0;
+    /** ★ v99：最近一次任一实例成功读到的真实色。作为某棵树探针"彻底读不到"时的绝对兜底 ——
+     *  用与系统当前主题一致的真实色，而不是 nightMode() 强制纯黑/纯白（那会让锁屏在浅色下永远黑字）。 */
+    private static int sLastGoodTint = 0;
 
     /**
      * 在最早拿到真实 SystemUI 上下文处调用（见 TrioHooks.onViewCreated）。
@@ -1395,8 +1407,12 @@ final class TrioState {
         //   原生图标啥色我们就啥色，不自己造刷新节奏，也不借其它实例的颜色。
         int t = liveTintFromHost();
         if (t == 0) {
-            // 本实例尚未取到过真实色：按系统深浅给初值，而不是借全局（状态栏的）深色。
-            t = nightMode() ? 0xFFFFFFFF : 0xFF000000;
+            // ★ v99：本实例至今没读到过自己的真实色（探针缺失/读 0）。先用"最近任一实例
+            //   读到的真实主题色"兜底（与系统当前主题一致，浅色就是浅色、深色就是深色），
+            //   而不是 nightMode() 强制纯黑/纯白 —— 那会让锁屏在浅色下永远黑字（=用户报的
+            //   "锁屏一直是深色"）。sLastGoodTint 恒为 0（系统刚起、谁都没读到）才退到 nightMode。
+            t = (sLastGoodTint != 0) ? sLastGoodTint
+                    : (nightMode() ? 0xFFFFFFFF : 0xFF000000);
         }
         // ★ v82b：浅色背景下系统下发到原生图标的 tint 自带 alpha（半透明灰），
         //   直接拿来画会让 5G/数字/图标发灰、显得细。强制不透明，保留系统色相、实心显示。

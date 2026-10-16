@@ -29,8 +29,8 @@ android {
         applicationId = "com.jsj.samsungduo"
         minSdk = 29
         targetSdk = 36
-        versionCode = tagVersionCode ?: 98
-        versionName = tagVersionName ?: "9.8"
+        versionCode = tagVersionCode ?: 99
+        versionName = tagVersionName ?: "9.9"
     }
 
     signingConfigs {
