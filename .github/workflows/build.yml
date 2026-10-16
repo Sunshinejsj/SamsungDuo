@@ -118,13 +118,22 @@ jobs:
       # ★ v85：tag push 才发布，且必须是正式 Release —— app 里的 updater 读
       #   releases/latest，那个接口不返回 draft 与 prerelease。
       #   资源名必须是 .apk，parseRelease 取第一个 apk asset。
+      # ★ 发版正文用仓库内 RELEASE_NOTES.md（人工撰写的「更新内容」），不再用自动提交列表。
+      - name: Prepare release notes
+        if: steps.stamp.outputs.publish == 'true'
+        run: |
+          if [ ! -f RELEASE_NOTES.md ]; then
+            printf '# SamsungDuo %s\n\n1. 修复……\n' "${{ steps.stamp.outputs.name }}" > RELEASE_NOTES.md
+          fi
+          sed -i "s/{{VERSION}}/${{ steps.stamp.outputs.name }}/g" RELEASE_NOTES.md
       - name: Publish a release for the APK
         if: steps.stamp.outputs.publish == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.stamp.outputs.tag }}
           name: SamsungDuo ${{ steps.stamp.outputs.name }}
+          body_path: RELEASE_NOTES.md
           files: dist/*.apk
           draft: false
           prerelease: false
-          generate_release_notes: true
+          generate_release_notes: false
