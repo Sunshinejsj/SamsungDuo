@@ -291,6 +291,8 @@ public final class TrioOverlay {
     private boolean attached;
     /** 是否已挂进系统图标 View 树（v23：TREE 模式，优先，能抢位子）。 */
     private boolean treeAttached = false;
+    /** 当前这套是不是锁屏（KeyguardStatusBarView）。★ v82fix：锁屏不应用「整组左右平移」。 */
+    private boolean keyguardRow = false;
     private int retryCount;
     private int lastLoggedX = Integer.MIN_VALUE;
     private int lastLoggedY = Integer.MIN_VALUE;
@@ -643,6 +645,7 @@ public final class TrioOverlay {
             final String rootName = (statusBarRoot == null)
                     ? "" : statusBarRoot.getClass().getSimpleName();
             final boolean keyguardRow = "KeyguardStatusBarView".equals(rootName);
+            this.keyguardRow = keyguardRow;
             // ★ v29 起统一为【正方形 + 目标 dp】：正方形保证 inkScale 只由边长决定、形状不变形。
             // ★ v50：宽度只作为"容器太窄时的兜底"（SIZE_RATIO 已放到 1.20，见其注释），
             //   真正的硬约束是下面的【容器高度上限】。三步走：
@@ -1020,14 +1023,15 @@ public final class TrioOverlay {
      * <p>符号：平移为负（往左）时 margin 要<b>加</b>（把原生图标推向左）；
      * 平移为正（往右）时 margin 要<b>减</b>（原生图标回位、让出地方）。
      */
-    private static int groupOffsetPx(float density) {
+    private int groupOffsetPx(float density) {
         return glyphOffsetPx(density) - glyphShiftPx(density);
     }
 
-    /** ★ v82：整组左右平移量换算成像素；配置读不到时退回 0（= 不动）。 */
-    private static int glyphShiftPx(float density) {
+    /** ★ v82：整组左右平移量换算成像素；配置读不到时退回 0（= 不动）。
+     *  ★ v82fix：锁屏不应用左右平移 → 直接退回 0，间距（glyphOffsetPx）照常保留。 */
+    private int glyphShiftPx(float density) {
         try {
-            return (int) (TrioConfig.get().glyphShift * density);
+            return keyguardRow ? 0 : (int) (TrioConfig.get().glyphShift * density);
         } catch (Throwable ignored) {
             return 0;
         }
@@ -1186,10 +1190,12 @@ public final class TrioOverlay {
         return glyphShiftPxF(v);
     }
 
-    /** ★ v82：平移基准（像素）。防烧屏关掉时循环会停（v74 省电），所以每条绘制路径都要自己能补上。 */
-    private static float glyphShiftPxF(View v) {
+    /** ★ v82：平移基准（像素）。防烧屏关掉时循环会停（v74 省电），所以每条绘制路径都要自己能补上。
+     *  ★ v82fix：锁屏不应用左右平移 → 退回 0（translationX 与窗口模式两条路都经此取值）。 */
+    private float glyphShiftPxF(View v) {
         try {
-            return TrioConfig.get().glyphShift
+            return keyguardRow ? 0f
+                    : TrioConfig.get().glyphShift
                     * v.getResources().getDisplayMetrics().density;
         } catch (Throwable ignored) {
             return 0f;

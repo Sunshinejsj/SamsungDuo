@@ -251,12 +251,18 @@ final class TrioState {
     private int liveTintFromHost() {
         try {
             final View probe = findTintProbe();
-            if (probe == null) {
-                return 0;
+            if (probe != null) {
+                final int t = TrioHooks.tintFrom(probe);
+                if (t != 0) {
+                    mLastLiveTint = t;
+                    return t;
+                }
             }
-            return TrioHooks.tintFrom(probe);
+            // 探针暂时拿不到：沿用本实例上一次成功取到的值（他没变就不变），
+            // 绝不回退到状态栏那棵树的深色 —— 否则下拉/锁屏会"他没变就变"，来回跳。
+            return mLastLiveTint;
         } catch (Throwable ignored) {
-            return 0;
+            return mLastLiveTint;
         }
     }
 
@@ -271,11 +277,9 @@ final class TrioState {
         if (c != null && c.getParent() != null) {
             return c;
         }
-        final long now = android.os.SystemClock.uptimeMillis();
-        if (now < probeDueAt) {
-            return null;
-        }
-        probeDueAt = now + 500L;
+        // ★ v82b：探针失效（被系统搬运/重建）时立刻在本实例自己的 host 树里重找，
+        //   不再等 500ms 限频 —— 等限频的那段窗口里取不到色，会回退到错误来源。
+        //   重找后本实例的图标即返回；若仍找不到，caller 会沿用本实例上一次的值（不借外色）。
         final View found = searchTintProbe(host, 0);
         tintProbe = new java.lang.ref.WeakReference<View>(found);
         return found;
@@ -308,7 +312,8 @@ final class TrioState {
     }
 
     private java.lang.ref.WeakReference<View> tintProbe;
-    private long probeDueAt;
+    /** ★ v82b：本实例上一次成功从原生探针读到的颜色；探针暂时拿不到时沿用，绝不借其它实例（状态栏）的深色。 */
+    private int mLastLiveTint = 0;
 
     /**
      * 在最早拿到真实 SystemUI 上下文处调用（见 TrioHooks.onViewCreated）。
@@ -1386,27 +1391,21 @@ final class TrioState {
     /** 状态栏图标应画成的颜色。优先用**本状态栏自己**的真实图标色，否则按系统深浅兜底。 */
     int foreground() {
         // ★ v77：**第一优先**实时读本实例自己 host 树里的原生图标当前颜色。
-        //   回调归因（forView）对下拉/锁屏不可靠：系统的暗色调度器把回调推到
-        //   状态栏那棵树，下拉与锁屏的 mIconTint 永远是 0，只能吃全局兜底值 ——
-        //   用户实测"下拉在浅色背景下没变色"，日志里也确实只有
-        //   tint[PhoneStatusBarView]，下拉/锁屏一条都没有。
-        //   实时读天然满足"下拉取下拉、状态栏取状态栏、锁屏取锁屏"，
-        //   且与原生图标同一帧同一值，不可能单独跳。
+        //   "锁屏看锁屏、下拉看下拉、状态栏看状态栏；他变我就变、他不变我不变" ——
+        //   原生图标啥色我们就啥色，不自己造刷新节奏，也不借其它实例的颜色。
         int t = liveTintFromHost();
         if (t == 0) {
-            t = mIconTint;
+            // 本实例尚未取到过真实色：按系统深浅给初值，而不是借全局（状态栏的）深色。
+            t = nightMode() ? 0xFFFFFFFF : 0xFF000000;
         }
-        if (t == 0) {
-            t = sFallbackTint;
-        }
+        // ★ v82b：浅色背景下系统下发到原生图标的 tint 自带 alpha（半透明灰），
+        //   直接拿来画会让 5G/数字/图标发灰、显得细。强制不透明，保留系统色相、实心显示。
+        t = (t & 0x00FFFFFF) | 0xFF000000;
         if (t != 0) {
             noteTint(t);
             return t;
         }
-        // 兜底：深色主题（暗背景）→ 图标白；浅色主题（亮背景）→ 图标黑。
-        final int c = nightMode() ? 0xFFFFFFFF : 0xFF000000;
-        noteTint(c);
-        return c;
+        return 0xFF000000;
     }
 
     private void noteTint(int resolved) {
