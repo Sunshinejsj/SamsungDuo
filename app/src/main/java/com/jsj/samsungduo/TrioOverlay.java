@@ -142,10 +142,81 @@ public final class TrioOverlay {
      * 再靠"跳行高上限 + 关容器裁剪"让它溢出状态栏行 —— 用户明确许可。
      */
     private static float wantWidth() {
-        final int scale = TrioConfig.get().glyphScale;
+        final int scale = effectiveGlyphScale();
         return (scale > 100) ? GLYPH_WIDTH_TREE_DP * scale / 100f : GLYPH_WIDTH_TREE_DP;
     }
-    /** 窗口类型：TYPE_STATUS_BAR_SUB_PANEL(2012)，唯一被实机验证可用的类型。 */
+
+    // ------------------------------------------------- 横屏尺寸回退（v100 → v101 模式无关）
+    //
+    // ★ 问题：整体尺寸 >100% 时，横屏会把三合一裁掉显示不全。
+    //   v100 初版只在 attachWindow()（窗口模式）注册 DisplayListener、用窗口 Context
+    //   测方向 —— 但实机日志(44)证明三合一走的是【挂树模式】(MODE=TREE)，
+    //   attachWindow 从不执行 ⇒ 监听没注册、方向恒当竖屏 ⇒ 横屏没回退。
+    //
+    // 方案（用户定）：尺寸 >100% 且横屏 → 一律回退 100%；切回竖屏再恢复原大小。
+    //
+    // ★ v108（本版）：方向来源换成 **实时读 Configuration.orientation**，
+    //   DisplayManager.DisplayListener 整套删掉。
+    //
+    //   为什么必须换（实机日志 50~53 + 反编译 OneXP 新版 1.0.261016 交叉验证）：
+    //   ① v107b 的 bug：`sRotation` 是静态的，三套 overlay（状态栏/锁屏/下拉）共用，
+    //      而"方向变了才动作"的判断在 onDisplayChanged 与 checkRotation 里各有一份，
+    //      **谁先命中就把静态量改掉** ⇒ 只有最先发现的那个实例会重挂，另外两个看到
+    //      "newRot == sRotation" 直接 return。日志 53 里 26 次旋转全部只有
+    //      keyguard=true 在响应，状态栏一直停在竖屏的 105px ⇒ 横屏被切。
+    //   ② DisplayListener 的 onDisplayChanged 会被以每秒十几次的频率回调（刷新率/
+    //      显示模式变化都算 display changed），必须额外做去重/合并，白养一层复杂度。
+    //   ③ Configuration.orientation 是**全局值**：三套 overlay 读到的必然一样，
+    //      不存在"谁先把共享量改掉"这回事；而且它是配置变化的一部分，
+    //      **旋转那一帧就已经是新值**，不需要等布局、不需要缓存行高、不需要 pre-draw。
+    //   OneXP 也是这么干的（全 dex 只有 3 处 Configuration.orientation，
+    //   没有 Display.getRotation、没有 registerDisplayListener）。
+    private static volatile boolean sLandscape = false;
+
+    /**
+     * ★ v108：无条件刷新 {@link #sLandscape}（幂等），返回当前是否横屏。
+     *
+     * <p><b>"无条件"是关键</b>：不做 {@code newRot == sRotation} 那种早退判断 ——
+     * 那个判断正是 v107b 只响应一套的元凶。写进去的值由全局 Configuration 决定，
+     * 谁先写、写几次，结果都一样。
+     */
+    private static boolean refreshLandscape(View v) {
+        if (v == null) {
+            return sLandscape;
+        }
+        try {
+            final android.content.res.Configuration c = v.getResources().getConfiguration();
+            if (c != null) {
+                sLandscape = (c.orientation
+                        == android.content.res.Configuration.ORIENTATION_LANDSCAPE);
+            }
+        } catch (Throwable ignored) {
+            // 取不到就沿用上次的值
+        }
+        return sLandscape;
+    }
+
+    /** 当前是否横屏。值由 {@link #refreshLandscape(View)} 每帧刷新。 */
+    private static boolean isLandscapeNow() {
+        return sLandscape;
+    }
+
+    /**
+     * 有效尺寸：横屏且设定 >100% 时封顶 100%，否则用设定值。
+     *
+     * <p>树/窗口两模式都走它。注意树模式 glyphScale 也可能 >100%
+     * （实机日志44：树模式 130%），故横屏回退对树模式同样必要、不再假设"树=100%"。
+     */
+    private static int effectiveGlyphScale() {
+        final int scale = TrioConfig.get().glyphScale;
+        return (scale > 100 && isLandscapeNow()) ? 100 : scale;
+    }
+    /**
+     * 窗口类型：TYPE_STATUS_BAR_SUB_PANEL(2012)，唯一被实机验证可用的类型。
+     * 仅作"挂树失败"时的安全兜底（v14 起）；它被状态栏区域框住，故 >100% 走挂树 +
+     * 逐层放开 clipChildren，不依赖它。独立悬浮窗方案已彻底放弃（脱离树不抢位子会遮挡），
+     * 曾试过的候选类型逐个试(2015/2012/2038)一并移除。
+     */
     private static final int WINDOW_TYPE = 2012;
     /** 重绘间隔（ms）：信号无广播，只能轮询。 */
     private static final long REFRESH_MS = 1000L;
@@ -161,6 +232,27 @@ public final class TrioOverlay {
     private static final java.util.Map<View, TrioOverlay> sLiveMap =
             new java.util.HashMap<>();
     private static boolean sBusy = false;
+
+    // ---- ★ v104：瞬时重挂（旋转/拖尺寸滑块时不再有"放大缩小"的过渡动画）----
+    /** 向上关掉几层父容器的 LayoutTransition：挂载点自身 + 外层壳。 */
+    private static final int LT_DEPTH = 5;
+    /**
+     * 抑制窗口：与 {@link #endInstantLayout()} 之间隔这么久再恢复。
+     * 不能"改完立刻恢复"——addView 只把布局标脏，真正的 layout 遍历在下一帧；
+     * 若在遍历前就还原，其它子 View 的位置/尺寸变化又会被动画化。
+     * 默认 LayoutTransition 时长 300ms，取 400ms 一次盖住。
+     */
+    private static final long LT_SUPPRESS_MS = 400L;
+    /**
+     * ★ v107b：挂载那一刻容器还没按最终布局量完（日志 53 实测状态栏
+     * container=84x107，稳定后 202x90）。过这么久再校一次尺寸。
+     */
+    private static final long ROT_SETTLE_MS = 600L;
+    private static final Object LT_LOCK = new Object();
+    /** 被临时关掉的容器 → 它原本的 LayoutTransition（可能为 null）。 */
+    private static final java.util.IdentityHashMap<ViewGroup, android.animation.LayoutTransition>
+            sLtSaved = new java.util.IdentityHashMap<>();
+    private static boolean sLtArmed = false;
 
     /**
      * ★ v58：状态栏图标颜色变了，立刻重绘所有活着的叠加层。
@@ -279,7 +371,11 @@ public final class TrioOverlay {
      * 影响它的设置变了就必须整体重挂，否则滑块拖了也不会有反应。
      */
     private int attachedGlyphScale = -1;
+    /** ★ v101：挂载时的 effectiveGlyphScale()（横屏会压到 100）。旋转导致它变化→强制重挂。 */
+    private int attachedEffScale = -1;
     private int attachedRowH = -1;
+    /** ★ v106：本次实际用的【行高基准】，供 tree-attached 那行核对。 */
+    private int lastHeightBase;
 
     /** ★ v65：行内几何只 dump 一次（每个实例一次）。 */
     private boolean rowGeomLogged = false;
@@ -485,6 +581,10 @@ public final class TrioOverlay {
             masterOffLogged = false;
             // ★ v23 合并策略：先尝试「挂进 system_icons 参与系统排布（能抢位子）」，
             //   挂不上再退回「v14 已验证的独立窗口」。两条路互为备份。
+            // ★ v102c 回退：曾试"开了独立窗口就强制跳窗口"(v102b)，但选中的窗口类型(2015)在状态栏
+            //   **下层被遮挡**，且引起重复图标/切换失灵/定位间距全变。独立悬浮窗需完整吃透 OneXP
+            //   的窗口类（它用 createWindowContext + app token + 特定类型的完整方案）后再做，
+            //   先回退到稳定的"树优先"，不再硬跳窗口。
             if (!treeAttached) {
                 if (tryAttachIntoIconTree()) {
                     treeAttached = true;
@@ -593,7 +693,12 @@ public final class TrioOverlay {
             //   下拉本来就要（头部 212px 空白区）；状态栏/锁屏是用户明确许可
             //   "可以出状态栏，只要图像显示完全"。120% 时上下各溢约 3.5px
             //   （density 3.5），不会画到相邻元素上。
-            final boolean overCap = TrioConfig.get().glyphScale > 100;
+            // ★ v101b：overCap 改用【有效尺寸】effectiveGlyphScale()，不是原始 glyphScale。
+            //   横屏 >100% 已回退到 effective 100%，若这里仍按原始 130 判 >100% = 真，
+            //   会跳过下面的"行高上限"保护（!overCap 才收高度）→ 渲染到 100% 大小却不按
+            //   行高收，差一点被裁（用户实测：130% 横屏"缩小了但没到干净 100%、还差一点
+            //   露在外面"）。改用 effective 后，横屏自动回退与手动设 100% 走同一条路。
+            final boolean overCap = effectiveGlyphScale() > 100;
             if (shadeRow || overCap) {
                 // >100% 时逐层放开（上到窗口外壳），否则放大后上下会被裁掉几像素
                 allowOverflow(parent, overCap);
@@ -620,13 +725,8 @@ public final class TrioOverlay {
             //   里，而视图边长只在挂载时算一次 → 用户拖「整体尺寸」滑块时，这里
             //   直接 return true，尺寸永远停在旧值（实测 100–120% 完全没效果）。
             //   行高一并纳入：它决定"行高上限"，行高变了 cap 也得重算。
-            if (glyph.getParent() == parent
-                    && haveSignal == wantSignal && haveType == wantType
-                    && havePerf == wantPerf
-                    && attachedGlyphScale == cfg.glyphScale
-                    && attachedRowH == statusBarRoot.getHeight()) {
-                return true;
-            }
+            // ★ v107：这段判定搬到下面（算完 w/h 之后）。原因见那边的 v107 分支 ——
+            //   尺寸变了现在走「原地改 LayoutParams」，不再摘了重挂。
             // ★ v49 安全护栏：绝不允许挂进 StatusIconContainer。
             //   它是自定义容器（onMeasure/onLayout 只认 StatusIconDisplayable 子 View），
             //   v39/v41 两次 SystemUI 崩溃都是因为它。这里按类名硬拦截：
@@ -657,9 +757,8 @@ public final class TrioOverlay {
             //   视图边长要把 TrioRenderer.INK_INSET 的防贴边余量补回来，
             //   否则加了余量图形会跟着缩 6%。
             //   用户要求：只为"上下不再被裁"，不要顺便把图标收小。
-            // ★ v77：锁屏把目标墨迹边长压回 100%（= GLYPH_WIDTH_TREE_DP），
-            //   下拉与状态栏不受影响、仍由「整体尺寸」130% 控制。
-            //   只压这一个数，其余一切逻辑不动。
+            // ★ v77：锁屏把目标墨迹边长压回 100%（= GLYPH_WIDTH_TREE_DP）。
+            //   下拉与状态栏不受影响、仍由「整体尺寸」控制。只压这一个数，其余逻辑不动。
             float wantInk = wantWidth();
             if (keyguardRow && wantInk > GLYPH_WIDTH_TREE_DP) {
                 wantInk = GLYPH_WIDTH_TREE_DP;
@@ -684,12 +783,19 @@ public final class TrioOverlay {
             //   不会再有"行边界"这个约束，于是改用头部高度作基准，让它与状态栏同尺寸。
             //   判定用上面已算好的 shadeRow。
             final int containerH = parent.getHeight();
+            // ★ v108：行高基准就是**当前实测量**，行高缓存（v106/v107 那套）整段撤掉。
+            //   缓存是为了"旋转当时就算准、不等布局"，但实测证明它反而是污染源
+            //   （日志 52 抓到瞬态 107 被写进缓存 ⇒ 之后每次都拿 107 当基准）。
+            //   v108 不再靠"一次算准"，改为**改完之后再复核几帧**（见 armSettle），
+            //   让尺寸自己收敛到稳定值 —— 不需要猜、不需要缓存。
+            final int heightBase = containerH;
+            this.lastHeightBase = heightBase;
             int h = w; // 正方形
             // ★ v75：整体尺寸 >100% 时跳过"行高上限"。该上限本来的职责是防止
             //   被行边界裁剪，而 >100% 已靠上面的 allowOverflow 关掉裁剪 ——
             //   再压高度就放大不上去（还会把宽一起压回来，白放大）。
-            if (containerH > 0 && !overCap) {
-                int base = containerH;
+            if (heightBase > 0 && !overCap) {
+                int base = heightBase;
                 if (shadeRow) {
                     final int rootH = (statusBarRoot == null) ? 0 : statusBarRoot.getHeight();
                     if (rootH > base) {
@@ -765,6 +871,76 @@ public final class TrioOverlay {
                     // 连 MarginLayoutParams 都不是（极罕见），放弃 margin 但不崩
                 }
             }
+            // ★ v107：已经挂在这个父容器上、陪衬集合也没变 —— 只是尺寸/行高/间距变了
+            //   → 【原地改 LayoutParams】，绝不摘了重挂。
+            //
+            //   为什么必须这样（实机日志 52 实测）：v106 每次"改尺寸"都是
+            //   detachGlyphAndSides() + addView()。而 removeView 会让我们的 View
+            //   收到 onWindowVisibilityChanged(GONE)、addView 再收到 VISIBLE ——
+            //   日志里 windowVis GONE/VISIBLE 成对出现 **2131 次**，
+            //   rot: instant remount 峰值 **18 次/秒**、tree-attached 累计 **6214 次**。
+            //   摘+挂本身只要 0~5ms，问题在于它会让整条状态栏反复重排、我们的
+            //   图标整体闪一下 —— 这就是用户看到的"整个状态栏消失一下再回来"。
+            //   原地改 LayoutParams 不触发任何显隐回调，也没有重排风暴。
+            final boolean sameParent = glyph.getParent() == parent;
+            final boolean sameSides = haveSignal == wantSignal
+                    && haveType == wantType && havePerf == wantPerf;
+            if (sameParent && sameSides) {
+                final int rowHNow = heightBase > 0 ? heightBase : 0;
+                boolean changed = applyGlyphLp(w, h, hasSide ? 0 : gap);
+                if (wantSignal && sideSignal != null) {
+                    final int sigH = clampToRow(
+                            TrioRenderer.outSignalHeight(cfg.outSignalSize, density), rowHNow);
+                    changed |= applySideLp(sideSignal,
+                            TrioRenderer.outSignalWidth(sigH), sigH,
+                            (int) (cfg.outSignalMargin * density), 0);
+                }
+                if (wantType && sideType != null) {
+                    final int typeH = clampToRow(
+                            TrioRenderer.outTypeHeight(density, app), rowHNow);
+                    changed |= applySideLp(sideType,
+                            TrioRenderer.outTypeWidth(state.mobileType, density, app), typeH,
+                            (int) (cfg.outTypeMarginLeft * density),
+                            (int) (cfg.outTypeMarginRight * density));
+                }
+                if (wantPerf && sidePerf != null) {
+                    final float perfBase = TrioRenderer.outTypePx(app.outTypeSize, density);
+                    changed |= applySideLp(sidePerf,
+                            TrioRenderer.perfWidth("99\u00B0C", perfBase, app),
+                            TrioRenderer.perfHeight("99\u00B0C", perfBase, app), 0, 0);
+                }
+                attachedGlyphScale = cfg.glyphScale;
+                attachedEffScale = effectiveGlyphScale();
+                attachedRowH = statusBarRoot.getHeight();
+                if (changed) {
+                    TrioHooks.log(LOG_OK, "overlay: resized in place w=" + w + " h=" + h
+                            + " rowH=" + rowHNow + " hBase=" + heightBase
+                            + " scale=" + effectiveGlyphScale()
+                            + " land=" + isLandscapeNow() + " keyguard=" + keyguardRow
+                            + " root=" + rootName
+                            + " cw=" + containerW);
+                    // 与挂载路径一致：整组边距立刻按新尺寸重算一次（之后 onDraw 每帧复核）。
+                    glyph.writeGroupMargins(parent, density, true);
+                    glyph.invalidate();
+                    if (sideSignal != null) {
+                        sideSignal.invalidate();
+                    }
+                    if (sideType != null) {
+                        sideType.invalidate();
+                    }
+                    if (sidePerf != null) {
+                        sidePerf.invalidate();
+                    }
+                }
+                return true;
+            }
+            // ★ v104：重挂是无动画的硬切换。先把父容器链上的 LayoutTransition 借走
+            //   （400ms 后原样还原），否则下面的"摘 + 挂"会被自动装上的
+            //   animateLayoutChanges 动画化 = 旋转瞬间肉眼可见的"图标缩小/放大过程"+
+            //   掉帧（用户反馈：旋转每次第一次都卡一下）。
+            //   拿到的诊断串用于判定"到底是哪几层在动画"，见下面的 lt= 字段。
+            final long remountT0 = android.os.SystemClock.uptimeMillis();
+            final String ltInfo = beginInstantLayout(parent);
             // 走到这里不会再 return 了：把旧的三个一起摘掉再按新设置重挂。
             detachGlyphAndSides();
             // ★ v59：先把两块陪衬挂上，再挂三合一。
@@ -772,7 +948,9 @@ public final class TrioOverlay {
             //   原生图标整体被挤到更左，这正是"占位"的含义。
             //   左→右顺序：类型标签 → 环外读数 → 三合一
             //   （与设置项文案一致：类型的"内侧"朝向环外读数与电池）。
-            final int rowH = containerH > 0 ? containerH : 0;
+            // ★ v106：陪衬也用同一个基准（旋转当时 = 缓存行高），免得那一帧三合一
+            //   已是新尺寸、陪衬还按旧行高钳着。
+            final int rowH = heightBase > 0 ? heightBase : 0;
             if (wantSignal) {
                 final int sigH = clampToRow(
                         TrioRenderer.outSignalHeight(cfg.outSignalSize, density), rowH);
@@ -819,6 +997,7 @@ public final class TrioOverlay {
             glyph.requestLayout();
             // ★ v76：记下这次挂载用的尺寸与行高，供下次"要不要重挂"的判定。
             attachedGlyphScale = cfg.glyphScale;
+            attachedEffScale = effectiveGlyphScale();
             attachedRowH = statusBarRoot.getHeight();
             // ★ v69：挂载后立刻同步一次整组边距（尤其陪衬那几块的 offset）。
             //   挂载瞬间布局还没跑、左邻居宽度不可知，之后由 onDraw 每帧复核兜住。
@@ -829,12 +1008,23 @@ public final class TrioOverlay {
                     + " w=" + w + " h=" + h
                     + " container=" + (containerW > 0 ? containerW : "?")
                     + "x" + (containerH > 0 ? containerH : "?")
+                    // ★ v101d：尺寸诊断 —— 核对各挂载点的根高/缩放/是否跳上限（用于排查尺寸问题）
+                    + " rootH=" + ((statusBarRoot == null) ? 0 : statusBarRoot.getHeight())
+                    // ★ v106：实际用的行高基准（旋转当时那次 = 缓存值，其余 = 实测量）
+                    + " hBase=" + lastHeightBase
+                    + " scale=" + effectiveGlyphScale()
+                    + " overCap=" + overCap
+                    + " keyguard=" + keyguardRow
                     + " lpType=" + lp.getClass().getName()
                     + " parentType=" + parent.getClass().getName()
                     + " marginSet=" + lpApplied + " lpMargin=" + readLeftMargin(lp)
                     + " gapPx=" + gap
                     + " offDp=" + (cfg.glyphLeftOffset * GLYPH_OFFSET_UNIT_DP)
                     + " siblings=" + parent.getChildCount()
+                    // ★ v104：父容器链上各层的 LayoutTransition 时长（0 = 该层本来就没有）
+                    + " lt=" + ltInfo
+                    // ★ v104：这次"摘+挂"本身耗了多久（>8ms 就是掉帧级别的主线程开销）
+                    + " remountMs=" + (android.os.SystemClock.uptimeMillis() - remountT0)
                     // ★ v59：环外陪衬的实际尺寸，一眼能核对"挂上了没、多大"
                     + " sideSignal=" + sideInfo(sideSignal)
                     + " sideType=" + sideInfo(sideType)
@@ -845,6 +1035,13 @@ public final class TrioOverlay {
             //   View 自己的内边距？还是中间夹着一个 INVISIBLE 但占位的 View？）。
             //   靠截图猜了三轮了，这次直接量。
             dumpRowGeometry(parent);
+            // ★ v107b：挂载那一刻容器还没按最终布局量完（日志 53 实测状态栏
+            //   container=84x107 → 宽度兜底把图标压成 105px，稳定后 202x90 → 应是 124px）。
+            //   ★ v108：复核走"之后几帧"（armSettle），另加一次延时兜底
+            //   （万一这几帧都没绘制：息屏/面板收起）。
+            armSettle();
+            MAIN.removeCallbacks(settleFallback);
+            MAIN.postDelayed(settleFallback, ROT_SETTLE_MS);
             return true;
         } catch (Throwable t) {
             TrioHooks.log(TrioHooks.LOG_WARN, "overlay: tree attach failed: " + t);
@@ -869,6 +1066,78 @@ public final class TrioOverlay {
         //   （已摘除、parent 为 null），而 computeSideBoxH 只看 "!= null"，
         //   于是统一盒高会被一块根本不存在的陪衬顶高 → 5G/温度底边对不齐。
         sidePerf = null;
+    }
+
+    /**
+     * ★ v104：重挂前临时关掉父容器链上的 {@link android.animation.LayoutTransition}。
+     *
+     * <p><b>为什么需要它</b>：旋转（或拖「整体尺寸」滑块）时有效尺寸变了 ⇒
+     * {@code tryAttachIntoIconTree} 走"摘掉旧的 → 按新尺寸再 addView"这条路。
+     * 而 SystemUI 的状态栏布局（{@code system_icons} / {@code system_icon_area} /
+     * 外壳）常带 {@code android:animateLayoutChanges="true"}，inflate 时会自动装上
+     * 一套默认 LayoutTransition（进出场 300ms 缩放+淡入淡出，相邻 View 位移也动画）。
+     * 于是"摘 = 出场动画（图标缩小淡出）"+"挂 = 入场动画（图标放大淡入）"，
+     * 用户看到的就是旋转瞬间"图标放大/缩小过程卡一下"。
+     *
+     * <p>这里只临时置 null（不是永久剥夺），并在 {@value #LT_SUPPRESS_MS}ms 后
+     * 由 {@link #endInstantLayout()} 原样还原 —— 之后原生图标该动画照旧动画。
+     *
+     * @return 诊断串，形如 {@code |system_icons:300|LinearLayout:0}，
+     *         数字 = 该层入场动画时长（0 表示该层本来就没有 LayoutTransition）。
+     */
+    private static String beginInstantLayout(ViewGroup from) {
+        final StringBuilder sb = new StringBuilder();
+        if (from == null) {
+            return sb.toString();
+        }
+        try {
+            synchronized (LT_LOCK) {
+                android.view.ViewParent p = from;
+                for (int i = 0; i < LT_DEPTH && (p instanceof ViewGroup); i++) {
+                    final ViewGroup g = (ViewGroup) p;
+                    final String name = g.getClass().getSimpleName();
+                    if (sLtSaved.containsKey(g)) {
+                        // 上一轮还在抑制窗口内：它已被管着，别再记一次（否则还原会写成 null）
+                        sb.append('|').append(name).append(":sup");
+                    } else {
+                        final android.animation.LayoutTransition lt = g.getLayoutTransition();
+                        sLtSaved.put(g, lt);
+                        if (lt != null) {
+                            g.setLayoutTransition(null);
+                            sb.append('|').append(name).append(':')
+                                    .append(lt.getDuration(
+                                            android.animation.LayoutTransition.APPEARING));
+                        } else {
+                            sb.append('|').append(name).append(":0");
+                        }
+                    }
+                    p = g.getParent();
+                }
+                if (!sLtArmed) {
+                    sLtArmed = true;
+                    MAIN.postDelayed(() -> endInstantLayout(), LT_SUPPRESS_MS);
+                }
+            }
+        } catch (Throwable ignored) {
+            // 关不掉也不影响挂载，最多还是会被动画化
+        }
+        return sb.toString();
+    }
+
+    /** ★ v104：{@link #beginInstantLayout} 的收尾 —— 把借走的 LayoutTransition 还回去。 */
+    private static void endInstantLayout() {
+        try {
+            synchronized (LT_LOCK) {
+                for (java.util.Map.Entry<ViewGroup, android.animation.LayoutTransition> e
+                        : sLtSaved.entrySet()) {
+                    e.getKey().setLayoutTransition(e.getValue());
+                }
+                sLtSaved.clear();
+                sLtArmed = false;
+            }
+        } catch (Throwable ignored) {
+            // 还原失败 = 那几层永久没有进出场动画，不致命
+        }
     }
 
     /**
@@ -1425,6 +1694,88 @@ public final class TrioOverlay {
     }
 
     /**
+     * ★ v107：原地改三合一自己的 LayoutParams（**不摘不挂**）。
+     *
+     * <p>用途：尺寸/行高/间距变了、但挂载位置与陪衬集合都没变时，用它代替
+     * 「detach + addView」。addView/removeView 会让 View 收到
+     * {@code onWindowVisibilityChanged}（GONE→VISIBLE）并强制整条状态栏重排，
+     * 日志 52 实测成对出现 2131 次；改 LayoutParams 两者都不会发生。
+     *
+     * @return 是否真的改了（没改就不必重绘）
+     */
+    private boolean applyGlyphLp(int w, int h, int leftMargin) {
+        try {
+            final ViewGroup.LayoutParams lp = glyph.getLayoutParams();
+            if (lp == null) {
+                return false;
+            }
+            int lm = -1;
+            if (lp instanceof android.view.ViewGroup.MarginLayoutParams) {
+                lm = ((android.view.ViewGroup.MarginLayoutParams) lp).leftMargin;
+            }
+            if (lp.width == w && lp.height == h && (lm < 0 || lm == leftMargin)) {
+                return false;
+            }
+            lp.width = w;
+            lp.height = h;
+            if (lm >= 0) {
+                ((android.view.ViewGroup.MarginLayoutParams) lp).leftMargin = leftMargin;
+            }
+            glyph.setLayoutParams(lp);
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** ★ v107：{@link #applyGlyphLp} 的陪衬版（RTL 下两侧互换，与 addSideView 一致）。 */
+    private static boolean applySideLp(View v, int w, int h, int outer, int inner) {
+        try {
+            if (v == null || v.getParent() == null) {
+                return false;
+            }
+            final ViewGroup parent = (ViewGroup) v.getParent();
+            final ViewGroup.LayoutParams lp = v.getLayoutParams();
+            if (lp == null) {
+                return false;
+            }
+            final boolean rtl = parent.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL;
+            final int start = rtl ? inner : outer;
+            final int end = rtl ? outer : inner;
+            final int ww = Math.max(0, w);
+            final int hh = Math.max(0, h);
+            int lm = -1;
+            int rm = -1;
+            if (lp instanceof android.view.ViewGroup.MarginLayoutParams) {
+                final android.view.ViewGroup.MarginLayoutParams mlp =
+                        (android.view.ViewGroup.MarginLayoutParams) lp;
+                lm = mlp.leftMargin;
+                rm = mlp.rightMargin;
+            }
+            if (lp.width == ww && lp.height == hh && (lm < 0 || (lm == start && rm == end))) {
+                return false;
+            }
+            lp.width = ww;
+            lp.height = hh;
+            if (lm >= 0) {
+                final android.view.ViewGroup.MarginLayoutParams mlp =
+                        (android.view.ViewGroup.MarginLayoutParams) lp;
+                mlp.leftMargin = start;
+                mlp.rightMargin = end;
+            }
+            v.setLayoutParams(lp);
+            if (v instanceof SideView) {
+                // ★ v75：只记"已写入值"供每帧去重；基准不再快照，每帧从 cfg 现读。
+                ((SideView) v).lastOuterPx = start;
+                ((SideView) v).lastRightPx = end;
+            }
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
      * 找系统图标容器（system_icons → system_icons_container → status_icon_area
      * → hover_system_icons_container）。
      *
@@ -1713,18 +2064,19 @@ public final class TrioOverlay {
     }
 
     /** 退回 v14 已验证的独立窗口方案。 */
-    private void attachWindow() {
+    /** @return true=窗口已挂上(或已 attached)，false=没建成(供强制窗口模式判断是否兜底挂树)。 */
+    private boolean attachWindow() {
         try {
             if (windowManager == null || params == null) {
                 final Context overlayCtx = createOverlayContext();
                 if (overlayCtx == null) {
-                    return;
+                    return false;
                 }
                 windowManager = (WindowManager) overlayCtx.getSystemService(Context.WINDOW_SERVICE);
                 params = buildParams();
             }
             if (windowManager == null || params == null) {
-                return;
+                return false;
             }
             if (!attached) {
                 try {
@@ -1737,21 +2089,65 @@ public final class TrioOverlay {
                     attached = false;
                     if (cn.contains("BadTokenException")
                             || cn.contains("IllegalArgumentException")) {
-                        return;
+                        return false;
                     }
                     if (retryCount < RETRY_MAX) {
                         retryCount++;
                         MAIN.postDelayed(this::attachOrSync, RETRY_MS);
                     }
-                    return;
+                    return false;
                 }
             }
             sync();
             glyph.startLoop();
+            return true;
         } catch (Throwable t) {
             TrioHooks.log(TrioHooks.LOG_WARN, "overlay: attachWindow failed: " + t);
+            return false;
         }
     }
+
+    /**
+     * ★ v108：按当前方向/尺寸重挂或原地改尺寸。
+     *
+     * <p>树模式下走 {@link #tryAttachIntoIconTree()} 的<b>原地改 LayoutParams</b> 分支
+     * （已挂在同一父容器、陪衬集合没变 ⇒ 只改宽高与边距，不摘不挂，日志 52 实测
+     * 摘挂会引起 windowVis GONE/VISIBLE 成对风暴 = "整个状态栏消失一下再回来"）。
+     */
+    private void remountNow() {
+        try {
+            if (treeAttached) {
+                tryAttachIntoIconTree();
+            } else if (attached) {
+                sync();
+            }
+            if (glyph != null) {
+                glyph.invalidate();
+            }
+        } catch (Throwable ignored) {
+            // 尺寸调整失败绝不影响系统
+        }
+    }
+
+    /**
+     * ★ v108：挂载/改尺寸之后，再复核几帧。
+     *
+     * <p><b>为什么还要复核</b>：布局不是一步到位的。日志 53 实测状态栏挂载那一刻
+     * 量到 {@code container=84x107}，稳定后才是 {@code 202x90} —— 第一帧算出来的
+     * 尺寸（105px）是错的，要等布局走完才会变成对的（124px）。
+     * 这里在"刚改过尺寸"之后再复核 {@value #SETTLE_FRAMES} 帧，让尺寸收敛到稳定值；
+     * 值稳定后 {@code tryAttachIntoIconTree} 会早退空转，没有额外开销。
+     */
+    private static final int SETTLE_FRAMES = 8;
+    private int settleFrames = 0;
+
+    /** 排一次事后复核（由 {@link GlyphView#checkSize} 每帧消费）。 */
+    private void armSettle() {
+        settleFrames = SETTLE_FRAMES;
+    }
+
+    /** 兜底跑腿：万一那几帧都没绘制（息屏/面板收起），到点照旧复核一次。 */
+    private final Runnable settleFallback = this::remountNow;
 
     /**
      * 重新定位窗口（屏幕绝对坐标，v14 实测有效）。
@@ -1792,7 +2188,10 @@ public final class TrioOverlay {
             //   改尺寸设置对窗口模式完全无效；上一版直接拿 wantWidth() 当宽度
             //   又漏了这次换算 —— 锁屏因此"只能到 100%"。现在三处真正一致：
             //   100% → 视图 95px，130% → 124px，与挂树模式逐像素相同。
-            final int scale = TrioConfig.get().glyphScale;
+            // ★ v100：横屏 >100% 回退 100%（见 effectiveGlyphScale），竖屏恢复设定值。
+            // ★ v108：窗口模式不一定每帧都走 onDraw，这里用之前先刷新一次方向。
+            refreshLandscape(root);
+            final int scale = effectiveGlyphScale();
             final int w = TrioRenderer.viewEdgeForInk(wantWidth() * density);
             // ★ v76：>100% 时把**窗口本身**加高，否则窗口边界（不是 clipChildren）
             //   会把放大的部分裁掉 —— 挂树模式靠逐层放开裁剪，窗口只能加高自己。
@@ -2362,9 +2761,77 @@ public final class TrioOverlay {
             setMeasuredDimension(resolveSize(w, widthSpec), resolveSize(h, heightSpec));
         }
 
+        /** ★ v108：上次按它算过尺寸的方向（每个实例各存一份，不共享，见 checkSize）。 */
+        private boolean appliedLandscape = false;
+        /** ★ v108：上次按它算过尺寸的「整体尺寸」滑块值。 */
+        private int appliedScale = -1;
+
+        /**
+         * ★ v108：配置变化（旋转 / 密度 / 折叠展开）由 ViewRootImpl 递归分发到每个
+         * 子树节点，我们挂在系统图标行里必然收到。这里只做一件事：<b>立即 invalidate</b>，
+         * 让 {@link #checkSize} 在下一帧就跑，不等下一次状态栏自发重绘。
+         */
         @Override
+        protected void onConfigurationChanged(android.content.res.Configuration newConfig) {
+            super.onConfigurationChanged(newConfig);
+            try {
+                invalidate();
+            } catch (Throwable ignored) {
+                // 重绘请求失败无害（onDraw 迟早也会被系统调用）
+            }
+        }
+
+        /**
+         * ★ v108：每帧复核尺寸（旋转 / 拖尺寸滑块 / 布局瞬态，全走这一条路）。
+         *
+         * <p><b>为什么放在 onDraw</b>：旋转是一次配置变化，会强制状态栏整体重排重绘，
+         * 每个可见 View 的 onDraw 都会被调用 —— 这是树模式最可靠的时机。
+         * 且 {@code Configuration.orientation} 在旋转<b>那一帧就已经是新值</b>，
+         * 不需要等布局、不需要 DisplayListener、不需要 pre-draw、不需要行高缓存。
+         *
+         * <p><b>为什么是"每个实例各自判断"而不是共享静态量 + 广播</b>（日志 53 实测）：
+         * v107b 用静态 {@code sRotation} + {@code newRot == sRotation} 早退，
+         * 结果三套 overlay 里只有最先发现的那个会命中，另外两个永远不动
+         * ⇒ 状态栏一直停在竖屏的 105px，横屏被切。
+         * 这里改成<b>每个实例各存一份</b> {@code appliedLandscape}，各判各的，
+         * 值来自同一个全局 Configuration（必然一致），于是三套都会各自命中。
+         *
+         * <p>改动触发后还会再复核 {@value #SETTLE_FRAMES} 帧 —— 布局不是一步到位的
+         * （日志 53：状态栏挂载那刻 {@code container=84x107}，稳定后 {@code 202x90}），
+         * 多复核几帧让尺寸收敛到稳定值。值稳定后 {@code tryAttachIntoIconTree} 早退空转。
+         */
+        private void checkSize() {
+            try {
+                // ★ v108：无条件刷新全局方向标记（幂等，值由 Configuration 决定）。
+                final boolean land = refreshLandscape(this);
+                final int scale = TrioConfig.get().glyphScale;
+                if (land == appliedLandscape && scale == appliedScale) {
+                    // 方向/尺寸没变：只在"刚改过、还没收敛"时继续复核。
+                    if (settleFrames > 0) {
+                        settleFrames--;
+                        remountNow();
+                    }
+                    return;
+                }
+                appliedLandscape = land;
+                appliedScale = scale;
+                TrioHooks.log(TrioHooks.LOG_INFO, "rot: size change land=" + land
+                        + " scale=" + scale
+                        + " effScale=" + effectiveGlyphScale()
+                        + " tree=" + treeAttached
+                        + " root=" + ((statusBarRoot == null)
+                                ? "?" : statusBarRoot.getClass().getSimpleName()));
+                remountNow();
+                armSettle();
+            } catch (Throwable ignored) {
+                // 尺寸复核绝不能影响绘制
+            }
+        }
+
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
+            // ★ v108：每帧尺寸复核（取代 v101b 的 checkRotation）。
+            checkSize();
             try {
                 // ★ v74：防烧屏开着但循环已停（上次关掉时停的）→ 重新拉起。
                 //   关时停循环是为了不空转；重新打开后必须由一次重绘把循环叫回来，

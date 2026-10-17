@@ -26,8 +26,8 @@
     <string name="trio_style_ring">圆环</string>
     <string name="trio_style_rect">矩形</string>
 
-    <string name="overlay_title">独立窗口绘制</string>
-    <string name="overlay_summary">使三合一图标不再受状态栏窗口高度限制。关闭后回到状态栏内绘制。同时是三合一图标整体尺寸限制开关，只有开启时才能调到 100–130%，关闭时最大 100%。</string>
+    <string name="overlay_title">解除尺寸限制</string>
+    <string name="overlay_summary">开启后解除 100% 尺寸上限，三合一图标可调到 130%，关闭时最大 100%。</string>
 
     <string name="show_wifi_title">显示 Wi-Fi 弧</string>
     <string name="show_wifi_summary">在圈内显示 Wi-Fi 弧线，弧数跟随实际信号强度；关闭后不显示。</string>
@@ -84,8 +84,8 @@
     <string name="burn_in_period_summary">走完一个完整周期所需的秒数，默认 60 秒。周期越短移动越快。</string>
 
     <string name="glyph_scale_title">三合一图标尺寸</string>
-    <string name="glyph_scale_summary" formatted="false">整个三合一图标大小调整，可调范围 60–130%，默认 100% ，超过 100% 时图形与占位一起放大，允许溢出状态栏行，下拉面板同样放开。</string>
-    <string name="glyph_scale_summary_capped" formatted="false">整个三合一图标大小调整，可调范围 60–100%，默认 100% ，想要突破 100% 大小限制，请先打开「独立窗口绘制」开关。</string>
+    <string name="glyph_scale_summary" formatted="false">整个三合一图标大小调整，可调范围 60–130%，默认 100% ，超过 100% 时图形与占位一起放大、高度大于状态栏其它图标，不会遮挡原生图标。</string>
+    <string name="glyph_scale_summary_capped" formatted="false">整个三合一图标大小调整，可调范围 60–100%，默认 100% ，想要突破 100% 大小限制，请先打开「解除尺寸限制」开关。</string>
 
     <string name="perf_temp_title">电池温度</string>
     <string name="perf_temp_summary">在电池图标旁显示电池温度。</string>
@@ -158,7 +158,7 @@
     <string name="track_alpha_summary">未点亮部分的透明度。</string>
 
     <string name="debug_title">调试日志</string>
-    <string name="debug_summary">把详细过程写入 LSPosed 日志，排查问题时开启。</string>
+    <string name="debug_summary">把详细过程写入 /sdcard/SamsungDuo_debug.log，排查问题时开启。</string>
 
     <string name="about_activated">已激活</string>
     <string name="about_inactive">未激活</string>
@@ -194,6 +194,7 @@
     <string name="update_uptodate">已是最新版本 %1$s</string>
     <string name="update_available">发现新版本 %1$s</string>
     <string name="update_available_summary">当前版本 %1$s · %2$s</string>
+    <string name="update_found">发现新版本 %1$s，当前 %2$s。到「关于」页下载更新。</string>
     <string name="update_download">下载更新</string>
     <string name="update_downloading">正在下载 %1$d%%</string>
     <string name="update_ready">新版本已下载完成。</string>
@@ -229,4 +230,11 @@
 
     <!-- Tooltip on a row greyed out by another setting; %1$s is that setting's name. -->
     <string name="gate_hint">需要先打开「%1$s」</string>
+
+    <!-- 全体限制：LSPosed 未激活时，点任意设置项 / 重启按钮都提示这条。 -->
+    <string name="lsposed_hint">请在 LSPosed 中勾选模块</string>
+    <string name="activation_banner_title">模块未激活</string>
+    <string name="activation_banner_summary">请在 LSPosed 中勾选本模块并重启系统界面后重试，设置才会生效。</string>
+    <!-- 重启系统界面按钮：ROOT 环境缺失时的提示。 -->
+    <string name="root_required">重启系统界面需要 ROOT 授权，请在 ROOT 管理应用中授予本应用 ROOT 权限</string>
 </resources>

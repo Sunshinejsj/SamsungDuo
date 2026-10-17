@@ -158,7 +158,7 @@
     <string name="track_alpha_summary">Opacity of the unlit parts of the glyph.</string>
 
     <string name="debug_title">Debug log</string>
-    <string name="debug_summary">Write verbose output to the LSPosed log. Enable only when diagnosing.</string>
+    <string name="debug_summary">Write verbose output to /sdcard/SamsungDuo_debug.log. Enable only when diagnosing.</string>
 
     <string name="about_activated">Activated</string>
     <string name="about_inactive">Inactive</string>
@@ -229,4 +229,7 @@
 
     <!-- Tooltip on a row greyed out by another setting; %1$s is that setting's name. -->
     <string name="gate_hint">Turn on &quot;%1$s&quot; first</string>
+
+    <string name="lsposed_hint">Enable this module in LSPosed first</string>
+    <string name="root_required">Restarting System UI needs root. Grant root access to this app in your root manager.</string>
 </resources>

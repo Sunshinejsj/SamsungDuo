@@ -191,6 +191,27 @@ internal class UpdateController(private val context: Context) {
     }
 
     /**
+     * The startup check: same query as [check], but it only speaks up when there
+     * is something to say.
+     *
+     * <p>★ v104：进 App 就自动跑一次。与 [check] 的唯一区别是它<b>只在确实有新版本
+     * 时才改写 [state]</b>，其余三种结果（没更新 / 仓库没 release / 网络失败）一律
+     * 停在 [UpdateState.Idle]，用户什么都看不到。
+     * 不这么做的话，开屏就先甩一条"检查失败 + HTTP 超时"给用户 —— 而更新这件事
+     * 本来就不该在没结果时打扰人。
+     */
+    fun autoCheck() {
+        if (state != UpdateState.Idle) return
+        scope.launch {
+            val current = installedVersion(context)
+            val result = withContext(Dispatchers.IO) { runCatching { retry { fetchLatest() } } }
+            // 失败与"没有 release"都当没查过：卡片继续停在 Idle，用户手动点才会出结果。
+            val info = result.getOrNull() ?: return@launch
+            if (isNewer(info.version, current)) state = UpdateState.Available(info, current)
+        }
+    }
+
+    /**
      * Downloads the APK next to the app's cache and, on success, moves to
      * [UpdateState.Ready]. The progress fraction is only meaningful while
      * [HttpURLConnection.getContentLengthLong] is known; it reports -1 otherwise.
