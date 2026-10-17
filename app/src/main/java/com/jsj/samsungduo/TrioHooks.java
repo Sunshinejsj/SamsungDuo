@@ -350,30 +350,34 @@ public final class TrioHooks {
     //    两者都走同一个幂等且防刷屏的 onStatusBarViewReady()。
     // ------------------------------------------------------------------
     private static int hookStatusBarView(XposedModule module, ClassLoader cl) {
-        final Class<?> frag = Refl.cls(
-                "com.android.systemui.statusbar.phone.fragment.CollapsedStatusBarFragment", cl);
-        if (frag == null) {
-            log(LOG_WARN, "CollapsedStatusBarFragment missing (view capture)");
-            return 0;
-        }
         int n = 0;
-        // 锚点 A（最可靠）：StatusBarIconView.onAttachedToWindow —— 图标 View 一定
         // 锚点 A（普通状态栏主锚点）：CollapsedStatusBarFragment.onViewCreated(View, Bundle)
         // 反编译确认：onViewCreated 内部 check-cast 成 PhoneStatusBarView，
         // 所以参数就是【普通状态栏】(statusbar/phone/PhoneStatusBarView)。
-        final Method mCreated = Refl.method(frag, "onViewCreated", View.class, Bundle.class);
-        if (mCreated != null) {
-            n += hook(module, mCreated, "samsungduo-view", new XposedInterface.Hooker() {
-                @Override
-                public Object intercept(XposedInterface.Chain chain) throws Throwable {
-                    final Object result = chain.proceed();
-                    final Object viewArg = chain.getArg(0);
-                    if (viewArg instanceof View) {
-                        onStatusBarViewReady((View) viewArg, "onViewCreated");
+        // ★ v101：One UI 9.0 已删除 CollapsedStatusBarFragment（对 9.0 SystemUI dex
+        //   实测 0 命中）。旧代码"类找不到就 return 0"会连带跳过下面的锚点 B，
+        //   导致 9.0 上状态栏整体不挂（日志 bar=0）。现改为：类找不到只跳过锚点 A、
+        //   继续 hook 锚点 B —— StatusBarIconView.onAttachedToWindow 在 9.0 仍存在
+        //   （dex 实证，含该方法），沿 parent 上溯找 PhoneStatusBarView 可独立挂载。
+        final Class<?> frag = Refl.cls(
+                "com.android.systemui.statusbar.phone.fragment.CollapsedStatusBarFragment", cl);
+        if (frag == null) {
+            log(LOG_WARN, "CollapsedStatusBarFragment missing (9.0 removed?) -> rely on StatusBarIconView anchor");
+        } else {
+            final Method mCreated = Refl.method(frag, "onViewCreated", View.class, Bundle.class);
+            if (mCreated != null) {
+                n += hook(module, mCreated, "samsungduo-view", new XposedInterface.Hooker() {
+                    @Override
+                    public Object intercept(XposedInterface.Chain chain) throws Throwable {
+                        final Object result = chain.proceed();
+                        final Object viewArg = chain.getArg(0);
+                        if (viewArg instanceof View) {
+                            onStatusBarViewReady((View) viewArg, "onViewCreated");
+                        }
+                        return result;
                     }
-                    return result;
-                }
-            });
+                });
+            }
         }
         // 锚点 B（补充）：StatusBarIconView.onAttachedToWindow —— 图标 attach 时上溯。
         // ★ 必须排除锁屏那套：三星有【两套独立状态栏】
@@ -720,16 +724,14 @@ public final class TrioHooks {
         return sStatusBarView;
     }
 
-    /** 与原项目签名一致的日志入口：TrioState 以 log(LOG_INFO, msg) 调用。 */
+    /**
+     * 与本模块统一的日志入口：TrioState / TrioOverlay 都经由它打日志。
+     *
+     * <p>★ v10.x：去掉 LSPosed 框架日志（不再向框架写日志），只在本机
+     * /sdcard/SamsungDuo_debug.log 落盘，且是否落盘由 SamsungDuoModule.flog 根据
+     * 关于页“调试日志”开关决定。level 形参保留以兼容现有调用点，不再使用。
+     */
     public static void log(int level, String msg) {
-        final XposedModule module = sModule;
-        if (module != null) {
-            try {
-                module.log(level, TAG, msg);
-            } catch (Throwable ignored) {
-                // 日志绝不能影响 hook 安装
-            }
-        }
         SamsungDuoModule.flog(msg);
     }
 }

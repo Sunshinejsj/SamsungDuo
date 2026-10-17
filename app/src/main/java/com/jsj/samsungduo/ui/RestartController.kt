@@ -112,3 +112,21 @@ internal class RestartController {
         check(exit == 0) { output.ifBlank { "$ROOT_SHELL exited with code $exit" } }
     }
 }
+
+/**
+ * Whether a `su` binary is reachable on the device — i.e. a root solution
+ * (Magisk / KernelSU / APatch) is installed. A present binary does not mean the
+ * user has granted this app root; it only means the restart can go on to ask for
+ * it. The actual `su -c` in [RestartController.killSystemUi] is what surfaces
+ * the grant prompt, and a refusal there lands as [RestartState.Failed].
+ */
+internal fun isRootAvailable(): Boolean {
+    return runCatching {
+        val process = ProcessBuilder("sh", "-c", "command -v su || which su")
+            .redirectErrorStream(true)
+            .start()
+        val out = process.inputStream.bufferedReader().use { it.readText() }.trim()
+        process.waitFor()
+        out.isNotEmpty()
+    }.getOrDefault(false)
+}

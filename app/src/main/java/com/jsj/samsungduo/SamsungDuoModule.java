@@ -20,11 +20,6 @@ import java.util.Locale;
  */
 public final class SamsungDuoModule extends XposedModule {
 
-    /** 与原项目一致的日志标签；logcat 过滤用 {@code adb logcat -s SamsungDuo}。 */
-    private static final String TAG = "SamsungDuo";
-    private static final int LOG_INFO = 4;
-    private static final int LOG_WARN = 5;
-
     /** 只 hook 系统界面；其它包（设置、桌面…）不碰。 */
     private static final String TARGET_PACKAGE = "com.android.systemui";
 
@@ -33,6 +28,7 @@ public final class SamsungDuoModule extends XposedModule {
         final String pkg = param.getPackageName();
         // 关键诊断：模块只要被框架加载，这一行必定写进 /sdcard/SamsungDuo_debug.log。
         // 用户手机/电脑不在一起时，靠这个文件定位“无效”到底卡在哪一步。
+        // 仅当关于页“调试日志”打开时才会真正落盘（见 flog）。
         flog("=== SamsungDuoModule loaded, pkg=" + pkg + " (target=" + TARGET_PACKAGE + ") ===");
         if (!TARGET_PACKAGE.equals(pkg)) {
             flog("pkg != target, skip (no hooks for " + pkg + ")");
@@ -43,18 +39,8 @@ public final class SamsungDuoModule extends XposedModule {
             TrioHooks.hookAll(this, param.getClassLoader());
             flog("hookAll finished");
         } catch (Throwable t) {
-            log(LOG_WARN, "hookAll failed: " + t);
             flog("hookAll FAILED: " + t);
         }
-    }
-
-    private void log(int priority, String msg) {
-        try {
-            log(priority, TAG, msg);
-        } catch (Throwable ignored) {
-            // 日志绝不能影响模块加载
-        }
-        flog(msg);
     }
 
     /** 上一次写盘的时刻（uptimeMillis），用于日志限流。 */
@@ -76,6 +62,8 @@ public final class SamsungDuoModule extends XposedModule {
                 || msg.startsWith("statusbar view ready")
                 || msg.startsWith("statusbar root pending")
                 || msg.startsWith("overlay:")
+                // ★ v101b：旋转自愈诊断（横竖屏切换尺寸回退）。
+                || msg.startsWith("rot:")
                 || msg.startsWith("reload receiver registered")
                 || msg.startsWith("tint:")
                 || msg.startsWith("TREE[")
@@ -95,12 +83,19 @@ public final class SamsungDuoModule extends XposedModule {
     }
 
     /**
-     * 同时把日志落盘到 /sdcard/SamsungDuo_debug.log，便于无 adb 时手机端查看。
+     * 把日志落盘到 /sdcard/SamsungDuo_debug.log，便于无 adb 时手机端查看。
+     *
+     * <p>★ 全体日志开关：只有关于页“调试日志”开关打开时才落盘；关闭时不生成任何日志。
+     *   这样日志不再无条件自动生成，避免长期占用 /sdcard 与 I/O。
      *
      * <p>带 100ms 限流：hook 回调（如每个图标 attach）可达毫秒级频率，
      * 不限流会瞬间写满磁盘并拖累 SystemUI。但关键生命周期行豁免限流。
      */
     public static void flog(String msg) {
+        // ★ 开关闸门：调试日志未打开，直接放弃，不写盘。
+        if (!TrioConfig.debugLog()) {
+            return;
+        }
         try {
             final long now = android.os.SystemClock.uptimeMillis();
             if (!isCritical(msg) && now - sLastLogAt < LOG_MIN_INTERVAL_MS) {

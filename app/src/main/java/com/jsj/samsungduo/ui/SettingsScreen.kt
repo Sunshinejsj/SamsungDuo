@@ -29,6 +29,8 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -47,6 +49,10 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -67,7 +73,10 @@ import com.jsj.samsungduo.TrioAppearance
 import com.jsj.samsungduo.TrioPreviewView
 import com.jsj.samsungduo.TrioSettings
 import io.github.libxposed.service.XposedService
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import org.json.JSONObject
 import top.yukonga.miuix.kmp.basic.Button
@@ -283,6 +292,14 @@ fun SettingsScreen(repository: SettingsRepository) {
 
     val context = LocalContext.current
 
+    // 模块是否真的注入到 System UI。`xposedService != null` 只代表 LSPosed 管理器在线，
+    // 不代表本模块被勾选并作用于 com.android.systemui；判定见 rememberModuleActive()。
+    val activated = rememberModuleActive()
+
+    // 顶部预览卡 + 四个 tab 在列表里的底边（根坐标）。锁定拦截层从这条线往下盖，
+    // 保证 tab 与预览卡永远不被拦，且滚动时跟着走。
+    val headerBottomPx = remember { mutableStateOf(0f) }
+
     // Same reasoning as the preview above: the dialog can be dismissed mid-kill, and a
     // root prompt that outlives the dialog still has to land somewhere.
     val restarter = remember { RestartController() }
@@ -335,7 +352,10 @@ fun SettingsScreen(repository: SettingsRepository) {
                 tabs = labels,
                 selectedTabIndex = current.ordinal,
                 onTabSelected = { index -> selectTab(SettingsTab.entries[index]) },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // 记录 tab 行的底边，供锁定拦截层定位（见 SectionList）。
+                    .onGloballyPositioned { headerBottomPx.value = it.boundsInRoot().bottom },
             )
         }
     }
@@ -364,6 +384,19 @@ fun SettingsScreen(repository: SettingsRepository) {
             }
             Unit
         }
+    }
+
+    // ★ v104：进 App 自动查一次更新。查询本身是静默的 —— 只有确实查到新版本才会
+    // 冒出来（见 UpdateController.autoCheck），查不到/网络不通都当没问过。
+    LaunchedEffect(updater) { updater.autoCheck() }
+
+    // 只提示一次：state 之后还会走到 Downloading / Ready，不记一笔就会反复弹同一条。
+    var updateAnnounced by remember { mutableStateOf(false) }
+    LaunchedEffect(updater.state) {
+        if (updateAnnounced) return@LaunchedEffect
+        val found = updater.state as? UpdateState.Available ?: return@LaunchedEffect
+        updateAnnounced = true
+        showMessage(context.getString(R.string.update_found, found.info.version, found.current))
     }
 
     // The kill lands on System UI, not on this process, so the confirmation
@@ -423,11 +456,18 @@ fun SettingsScreen(repository: SettingsRepository) {
                 scrollBehavior = scrollBehavior,
                 actions = {
                     IconButton(
-                        // The dialog is the only place a kill can be started, so
-                        // a stale failure from last time must not greet the user.
+                        // 未激活 → 只提示去 LSPosed 勾选；已激活但无 ROOT → 提示授权；
+                        // 两者都满足才真正进入重启流程。
                         onClick = {
-                            restarter.reset()
-                            restarting = true
+                            when {
+                                !activated -> showMessage(context.getString(R.string.lsposed_hint))
+                                !isRootAvailable() ->
+                                    showMessage(context.getString(R.string.root_required))
+                                else -> {
+                                    restarter.reset()
+                                    restarting = true
+                                }
+                            }
                         },
                     ) {
                         Icon(imageVector = MiuixIcons.Refresh, contentDescription = restartTitle)
@@ -475,7 +515,13 @@ fun SettingsScreen(repository: SettingsRepository) {
             // captured here: the provider is remembered, so an entry built with a
             // snapshot of the settings would go on showing that snapshot.
             entry<Route.General> {
-                SectionList(sectionPadding, isTop = nav.backStack.lastOrNull() == Route.General) {
+                SectionList(
+                    contentPadding = sectionPadding,
+                    isTop = nav.backStack.lastOrNull() == Route.General,
+                    locked = !activated,
+                    headerBottom = headerBottomPx,
+                    onLockedTap = { showMessage(context.getString(R.string.lsposed_hint)) },
+                ) {
                     sectionHeader()
                     val s = settingsState.value
                     generalTab(s) { block -> update(block) }
@@ -483,7 +529,13 @@ fun SettingsScreen(repository: SettingsRepository) {
             }
 
             entry<Route.Geometry> {
-                SectionList(sectionPadding, isTop = nav.backStack.lastOrNull() == Route.Geometry) {
+                SectionList(
+                    contentPadding = sectionPadding,
+                    isTop = nav.backStack.lastOrNull() == Route.Geometry,
+                    locked = !activated,
+                    headerBottom = headerBottomPx,
+                    onLockedTap = { showMessage(context.getString(R.string.lsposed_hint)) },
+                ) {
                     sectionHeader()
                     val s = settingsState.value
                     geometryTab(s) { block -> update(block) }
@@ -491,7 +543,13 @@ fun SettingsScreen(repository: SettingsRepository) {
             }
 
             entry<Route.Colors> {
-                SectionList(sectionPadding, isTop = nav.backStack.lastOrNull() == Route.Colors) {
+                SectionList(
+                    contentPadding = sectionPadding,
+                    isTop = nav.backStack.lastOrNull() == Route.Colors,
+                    locked = !activated,
+                    headerBottom = headerBottomPx,
+                    onLockedTap = { showMessage(context.getString(R.string.lsposed_hint)) },
+                ) {
                     sectionHeader()
                     val s = settingsState.value
                     colorsTab(
@@ -504,7 +562,14 @@ fun SettingsScreen(repository: SettingsRepository) {
             }
 
             entry<Route.About> {
-                SectionList(sectionPadding, isTop = nav.backStack.lastOrNull() == Route.About) {
+                // 关于页永不限制：locked 恒为 false。
+                SectionList(
+                    contentPadding = sectionPadding,
+                    isTop = nav.backStack.lastOrNull() == Route.About,
+                    locked = false,
+                    headerBottom = headerBottomPx,
+                    onLockedTap = {},
+                ) {
                     sectionHeader()
                     val s = settingsState.value
                     aboutTab(s, serviceState.value, updater) { block ->
@@ -582,6 +647,9 @@ fun SettingsScreen(repository: SettingsRepository) {
 private fun SectionList(
     contentPadding: PaddingValues,
     isTop: Boolean,
+    locked: Boolean,
+    headerBottom: androidx.compose.runtime.State<Float>,
+    onLockedTap: () -> Unit,
     content: LazyListScope.() -> Unit,
 ) {
     // A section is a place the reader arrives at, not a document they come back to:
@@ -598,26 +666,91 @@ private fun SectionList(
         if (isTop) listState.scrollToItem(0)
     }
 
-    LazyColumn(
-        state = listState,
+    // ★ LSPosed 未激活时：不盖任何覆盖层，只在 LazyColumn 自己的 modifier 上挂一个手势闸门。
+    //   闸门工作在 Initial 阶段（父节点先于子节点收到事件），因此能拦住控件的「抬起」，
+    //   又完全不碰「按下 / 移动」，滚动与惯性全归列表自己处理 —— 锁定时照样能上下浏览。
+    //   四个 tab 与预览卡在 headerBottom 之上，闸门直接放过那一块，永远可点。
+    //   locked = false 时这个 modifier 不挂，行为与 v108 完全一致。
+    var boxTop by remember { mutableStateOf(0f) }
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            // Opaque, because a destination here is a whole page. The section being
-            // left stays composed and keeps being drawn underneath for the length of
-            // the transition — the visible window is `-1 < d <= 1`, deliberately wide
-            // enough to cross-fade from. Nothing else hides it: both lists are the same
-            // size and sit in the same place, so the covered one is covered only by the
-            // pixels the top one actually paints. A transparent list therefore lets the
-            // previous section show through the gaps between cards and below the end of
-            // a shorter section, which reads as the old tab lying under the new one.
-            //
-            // The same colour the Scaffold paints, which was doing this job alone while
-            // there was only ever one list to paint.
-            .background(MiuixTheme.colorScheme.surface),
-        contentPadding = contentPadding,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .onGloballyPositioned { boxTop = it.boundsInRoot().top },
     ) {
-        content()
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxSize()
+                // Opaque, because a destination here is a whole page. The section being
+                // left stays composed and keeps being drawn underneath for the length of
+                // the transition — the visible window is `-1 < d <= 1`, deliberately wide
+                // enough to cross-fade from. Nothing else hides it: both lists are the same
+                // size and sit in the same place, so the covered one is covered only by the
+                // pixels the top one actually paints. A transparent list therefore lets the
+                // previous section show through the gaps between cards and below the end of
+                // a shorter section, which reads as the old tab lying under the new one.
+                //
+                // The same colour the Scaffold paints, which was doing this job alone while
+                // there was only ever one list to paint.
+                .background(MiuixTheme.colorScheme.surface)
+                .lockGate(
+                    locked = locked,
+                    headerBottom = { (headerBottom.value - boxTop).coerceAtLeast(0f) },
+                    onTap = onLockedTap,
+                ),
+            contentPadding = contentPadding,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            content()
+        }
+    }
+}
+
+/**
+ * 锁定态的手势闸门：只拦「按」，不拦「滚」。
+ *
+ * <p>挂在 LazyColumn 自己的 modifier 上，工作在 [PointerEventPass.Initial]（父节点先于子节点
+ * 拿到事件），因此：
+ * <ul>
+ *   <li>按下、移动一概不消费 —— 滚动、惯性、列表的手势全归列表自己；</li>
+ *   <li>点按抬起时消费 —— 子控件的 clickable 收不到 up，开关/按钮不会触发，同时弹提示；</li>
+ *   <li>横向拖动消费 —— 滑块拖不动；纵向一旦超过 slop 就退出，交给滚动。</li>
+ * </ul>
+ * 预览卡与四个 tab 位于 [headerBottom] 之上，直接放过，永远可点。
+ */
+private fun Modifier.lockGate(
+    locked: Boolean,
+    headerBottom: () -> Float,
+    onTap: () -> Unit,
+): Modifier = if (!locked) this else pointerInput(onTap) {
+    val slop = viewConfiguration.touchSlop
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        if (down.position.y < headerBottom()) return@awaitEachGesture
+        var tap = true
+        var horizontal: Boolean? = null
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+            if (!change.pressed) {
+                if (tap) {
+                    change.consume()
+                    onTap()
+                }
+                break
+            }
+            val dx = kotlin.math.abs(change.position.x - down.position.x)
+            val dy = kotlin.math.abs(change.position.y - down.position.y)
+            if (tap && (dx > slop || dy > slop)) {
+                tap = false
+                horizontal = dx > dy
+            }
+            when (horizontal) {
+                true -> change.consume()
+                false -> break
+                null -> Unit
+            }
+        }
     }
 }
 
@@ -791,28 +924,33 @@ private fun LazyListScope.generalTab(
             // itself: turn the bolt off and "the rule would draw a bolt" goes
             // false, the row disables, and it can never be turned back on.
             // A row may be gated by other switches but never by its own.
-            val valueGate = gateHint(
+            // ★ v100：闪电开关独立化 —— 只受总开关(glyph)门控，不再依附"电量数字"。
+            //   此前 enabled = a.glyph && a.value 且 gateHint 里含 a.value：
+            //   关掉"电量数字"后这个开关被禁用，用户"关电量后闪电按钮就废了"。
+            //   现已解耦（TrioAppearance.drawsBolt() 只认 boltWanted）：关掉电量数字，
+            //   闪电仍可单独画在 12 点充电缺口（渲染层 r.bolt && !chargePair 分支）。
+            val boltGate = gateHint(
                 a.glyph to R.string.master_title,
-                a.value to R.string.show_value_title,
             )
-            TooltipBox(text = valueGate.orEmpty(), enabled = valueGate != null) {
+            TooltipBox(text = boltGate.orEmpty(), enabled = boltGate != null) {
                 SwitchPreference(
                     checked = a.boltWanted,
                     onCheckedChange = { value -> update { it.setShowBolt(value) } },
                     title = stringResource(R.string.show_bolt_title),
                     summary = stringResource(R.string.show_bolt_summary),
                     insideMargin = SettingsItemMargin,
-                    enabled = a.glyph && a.value,
+                    enabled = a.glyph,
                 )
             }
             // 0 = hidden, 1 = inside the ring, 2 = drawn outside the ring; the
             // option list is ordered so its index is exactly the stored value.
             //
-            // Gated on the master switch only, not on showValue the way the bolt
-            // row above is: the renderer picks the in-ring type centre slot
-            // without consulting showValue (TrioRenderer typeInCentre), and the
-            // out-of-ring label is a separate view entirely. Requiring the
-            // percentage would leave this row unreachable for no reason.
+            // Gated on the master switch only, same as the bolt row above since
+            // v100 (both dropped their showValue dependency): the renderer picks
+            // the in-ring type centre slot without consulting showValue
+            // (TrioRenderer typeInCentre), and the out-of-ring label is a separate
+            // view entirely. Requiring the percentage would leave this row
+            // unreachable for no reason.
             val typeModes = listOf(
                 stringResource(R.string.mobile_type_off),
                 stringResource(R.string.mobile_type_inside),
@@ -868,12 +1006,10 @@ private fun LazyListScope.geometryTab(
     // follow the arrangement actually on screen instead of a second copy of it.
     val a = TrioAppearance.of(settings)
 
-    // ★ v80：「整体尺寸」的上限跟着「独立窗口绘制」走（用户定的规则）——
-    //   关着独立窗口 = 挂在状态栏那一行里参与排布，放大只能放开 clipChildren，
-    //   而 clipChildren 对 Android 窗口边界无效 ⇒ 最大 100%；
-    //   开着 = 独立小窗口，可以把窗口自身加高 ⇒ 解锁 100–130%。
-    //   这里 coerceIn 兜住"刚关掉独立窗口、存储里还留着 130"的那一瞬：
-    //   setOverlay 会顺手把存储写回 100，但状态快照要等下一次重组才读到。
+    // ★ v103：「整体尺寸」的上限跟着「解除尺寸限制」走（用户定的规则，一个开关两档）——
+    //   关着 = 60–100%，开着 = 60–130%。三处都挂在状态栏行里参与排布（树模式），
+    //   不再有独立悬浮窗口（v102 试过：脱离树就不抢位子，会遮挡原生图标，已彻底放弃）。
+    //   这里 coerceIn 兜住"刚关掉开关、存储里还留着更大值"的那一瞬。
     val glyphScaleCap = if (settings.overlayGlyph) {
         Prefs.MAX_GLYPH_SCALE
     } else {
@@ -2557,4 +2693,47 @@ private fun readScope(service: XposedService?, unknown: String): String {
     val packages = runCatching { service.scope }.getOrNull()
     if (packages.isNullOrEmpty()) return unknown
     return packages.joinToString("\n")
+}
+
+/**
+ * 模块是否真的注入到了 System UI。
+ *
+ * <p>`xposedService != null` 只说明 LSPosed 管理器在线；模块仍可能没被勾选、或没勾作用域，
+ * 那样它根本不会被加载进 System UI。框架通过 [XposedService.getRunningTargets] 报告它已注入
+ * 的进程，System UI 在这个列表里才算「已激活」。
+ *
+ * <p>查询本身抛异常时一律按「未激活」处理：误放行比短暂锁住更糟，3 秒轮询会自行恢复。
+ */
+private const val SYSTEM_UI_TARGET = "com.android.systemui"
+
+private suspend fun computeModuleActive(): Boolean = withContext(Dispatchers.IO) {
+    val svc = SamsungDuoApp.xposedService ?: return@withContext false
+    runCatching {
+        svc.getRunningTargets().any { it.processName == SYSTEM_UI_TARGET }
+    }.getOrElse { false }
+}
+
+/**
+ * 屏幕级激活状态：绑定/解绑立即重查，另每 3 秒轮询一次 ——
+ * 用户可能在本页开着时去 LSPosed 勾选模块，那条路径不会触发 binder 变化。
+ */
+@Composable
+private fun rememberModuleActive(): Boolean {
+    var active by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    DisposableEffect(Unit) {
+        val listener: (XposedService?) -> Unit = {
+            scope.launch { active = computeModuleActive() }
+        }
+        SamsungDuoApp.addServiceListener(listener)
+        listener(SamsungDuoApp.xposedService)
+        onDispose { SamsungDuoApp.removeServiceListener(listener) }
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(3000)
+            active = computeModuleActive()
+        }
+    }
+    return active
 }

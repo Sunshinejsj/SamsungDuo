@@ -21,11 +21,13 @@ import android.telephony.CellSignalStrengthGsm;
 import android.telephony.CellSignalStrengthLte;
 import android.telephony.CellSignalStrengthNr;
 import android.telephony.CellSignalStrengthWcdma;
+import android.telephony.PhoneStateListener;
 import android.telephony.SignalStrength;
 import android.view.View;
 import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
+import android.util.SparseArray;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -67,6 +69,24 @@ final class TrioState {
     static final int SIM_SLOTS = 2;
     static volatile int[] sSlotLevels = { -1, -1 };
     static volatile int sDataSlot = -1;
+
+    // ------------------------------------------------- 信号读取：回调式缓存（v100）
+    //
+    // ★ One UI 9.0 适配：此前 levelOf 里用 TelephonyManager.getSignalStrength()
+    //   **同步轮询**取 SignalStrength，实测 9.0 上该方法返回的是 cells=[]、
+    //   rssi=-127、level=-1 的空对象（vendor=-1、cells=[]、mLevel=-1），
+    //   导致环内四点/环外信号读数整个失效。
+    //   参照 OneUI XP（OneuiXP_1.0.261013.apk，SDK37）的做法：改用**回调式**
+    //   PhoneStateListener.onSignalStrengthsChanged 缓存每张卡最新的真实
+    //   SignalStrength，levelOf 优先读缓存，读不到再退回同步轮询。
+    //   同时补一条公开 API 兜底 levelFromCells（getCellSignalStrengths 取最高档），
+    //   让 9.0 上 getVendorLevel 缺失时也能拿到合理档位。
+    /** 回调缓存：subId → 最近一次真实 SignalStrength。 */
+    private static final SparseArray<SignalStrength> sSigBySub = new SparseArray<>();
+    private static final Object sSigLock = new Object();
+    /** 当前已绑定监听的 subId（按 slot 存，-1 = 未占用）。 */
+    private static volatile int[] sBoundSubs = { -1, -1 };
+    private static final PhoneStateListener[] sBoundListeners = new PhoneStateListener[SIM_SLOTS];
 
     /** v56 只读诊断：阈值配置只 dump 一次；失败可重试。 */
     private static volatile boolean sSigCfgDumped = false;
@@ -278,29 +298,57 @@ final class TrioState {
         if (c != null && c.getParent() != null) {
             return c;
         }
-        // ★ v82b：探针失效（被系统搬运/重建）时立刻在本实例自己的 host 树里重找，
-        //   不再等 500ms 限频 —— 等限频的那段窗口里取不到色，会回退到错误来源。
-        //   重找后本实例的图标即返回；若仍找不到，caller 会沿用本实例上一次的值（不借外色）。
-        final View found = searchTintProbe(host, 0);
+        // ★ v101c：两阶段搜索 —— 先全树找【真系统图标类】，找不到才用【任意染色 View】兜底。
+        //   旧代码把两者写在同一个 DFS 里：9.0 状态栏【左侧】的三星时钟/运营商名是非容器、
+        //   已被染成固定灰 ff6f767d，DFS 先访问到左侧 → 兜底抢先返回这个错元素，
+        //   探针抓到时钟的灰而非右侧系统图标区的 StatusBarIconView ⇒ 状态栏取色恒灰、不随明暗。
+        View found = searchSystemIcon(host, 0);
+        if (found == null) {
+            found = searchAnyTinted(host, 0);
+        }
         tintProbe = new java.lang.ref.WeakReference<View>(found);
         return found;
     }
 
-    /** 在 host 树里找第一个可染色的原生图标（与 hook 的 {@code DARK_RECEIVERS} 同类）。 */
-    private static View searchTintProbe(View v, int depth) {
+    /**
+     * 阶段一：全树找第一个【真系统图标类】（与系统暗色调度器染色路径同类）。
+     * 只认这三类，绝不被其它已染色元素（时钟/运营商名等）抢先 —— 修 9.0 状态栏取色恒灰。
+     */
+    private static View searchSystemIcon(View v, int depth) {
         if (v == null || depth > 12) {
             return null;
         }
         try {
             final String cn = v.getClass().getName();
-            // 已知会被系统染色的原生图标类：优先返回（即便当前瞬间为 0 也返回，交由上层沿用本实例缓存）。
             if (cn.equals("com.android.systemui.statusbar.StatusBarIconView")
                     || cn.equals("com.android.systemui.statusbar.policy.NetspeedView")
                     || cn.equals("com.android.systemui.battery.BatteryMeterView")) {
                 return v;
             }
-            // ★ v99：兜底——非容器的、已染上色的 View（覆盖三星锁屏可能用不同图标类 / 染色路径，
-            //   导致原三类硬编码名单漏命中、探针为 null 而锁屏被强制 nightMode 兜底的现象）。
+            if (v instanceof android.view.ViewGroup) {
+                final android.view.ViewGroup g = (android.view.ViewGroup) v;
+                for (int i = 0; i < g.getChildCount(); i++) {
+                    final View r = searchSystemIcon(g.getChildAt(i), depth + 1);
+                    if (r != null) {
+                        return r;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    /**
+     * 阶段二（兜底）：全树找第一个"非容器且已染色"的 View。
+     * 仅当阶段一找不到系统图标类时才走（覆盖三星锁屏可能用不同图标类 / 染色路径，
+     * 导致原三类硬编码名单漏命中、探针为 null 而锁屏被强制 nightMode 兜底的现象）。
+     */
+    private static View searchAnyTinted(View v, int depth) {
+        if (v == null || depth > 12) {
+            return null;
+        }
+        try {
             if (!(v instanceof android.view.ViewGroup)) {
                 if (TrioHooks.tintFrom(v) != 0) {
                     return v;
@@ -309,7 +357,7 @@ final class TrioState {
             if (v instanceof android.view.ViewGroup) {
                 final android.view.ViewGroup g = (android.view.ViewGroup) v;
                 for (int i = 0; i < g.getChildCount(); i++) {
-                    final View r = searchTintProbe(g.getChildAt(i), depth + 1);
+                    final View r = searchAnyTinted(g.getChildAt(i), depth + 1);
                     if (r != null) {
                         return r;
                     }
@@ -475,6 +523,9 @@ final class TrioState {
             if (intent != null && Intent.ACTION_BATTERY_CHANGED.equals(intent.getAction())) {
                 lastBatteryIntent = intent; // 缓存给 readQuick 读充电类型 extra
                 readBattery(ctx, intent);
+                // ★ v101：充电状态即时响应 —— 广播一到就重绘，不必等 1s 轮询。
+                //   charging 已改为不去抖（见 refresh），这里事件驱动让拔/插当场切换。
+                TrioOverlay.invalidateAll();
             }
         }
     }
@@ -776,12 +827,15 @@ final class TrioState {
     void refresh() {
         // 电量 / 充电从标准广播静态量搬运
         level = sBatteryLevel;
-        // ★ v77：充电/省电/低电量这三个布尔量**去抖后再用**。
-        //   它们由电池广播写入 static，而信号轮询每秒读一次 —— 两者相位不一致时，
-        //   某一秒恰好读到"广播刚刷到一半"的值，颜色就在两档间跳一下（实机录屏
-        //   实测：电量弧 87↔214，1s 周期，与 REFRESH_MS=1000 严丝合缝）。
-        //   连续 2 次采样一致才切换，代价只是状态切换最多晚一个轮询周期（1s）。
-        charging = settle(0, charging, sBatteryCharging);
+        // ★ v77：快充/省电/低电量这三个布尔量**去抖后再用**（它们是颜色细节，
+        //   1s 轮询与广播相位不一致时会两档跳一下，连续 2 次一致才切换）。
+        //
+        // ★ v101：但【充电状态 charging 本身不再去抖】—— 用户实测"拔充电器后
+        //   图标延迟一会才切换"。根因：charging 也走了 settle(2连拍)，而 refresh
+        //   约 1s/次 ⇒ 拔插后要 ~2s 才翻。充电是广播直接给的可靠离散值、不会抖，
+        //   理应即时；且 BatteryReceiver.onReceive 末尾已 invalidateAll() 立刻重绘，
+        //   走事件驱动比"轮询+去抖"更跟手。快充/省电/低电量保留去抖。
+        charging = sBatteryCharging;
         quickCharging = settle(1, quickCharging, sBatteryQuick);
         low = settle(2, low, sBatteryLow);
         powerSave = settle(3, powerSave, sBatteryPowerSave);
@@ -845,6 +899,8 @@ final class TrioState {
             }
             final int dataSubId = SubscriptionManager.getDefaultDataSubscriptionId();
             final List<SubscriptionInfo> infos = subs.getActiveSubscriptionInfoList();
+            // ★ v100：给每张活动卡绑定信号回调，缓存真实 SignalStrength（9.0 同步轮询为空）。
+            bindSignalListeners(tel, infos);
             if (infos != null) {
                 for (int i = 0; i < infos.size(); i++) {
                     final SubscriptionInfo info = infos.get(i);
@@ -896,6 +952,106 @@ final class TrioState {
             } catch (Throwable ignored) {
                 sSigCfgDumped = false;
             }
+        }
+    }
+
+    /**
+     * ★ v100：给每张活动卡绑定信号回调，把最新 SignalStrength 缓存进 {@link #sSigBySub}。
+     *
+     * <p><b>为什么不用同步轮询</b>：{@code TelephonyManager.getSignalStrength()} 在
+     * One UI 9.0 上返回的是空对象（cells=[]、rssi=-127、level=-1），
+     * 而回调 {@code onSignalStrengthsChanged} 拿到的是完整对象。
+     * 这是参照 OneUI XP（SDK37 样本）的做法：它用
+     * {@code TelephonyCallback$SignalStrengthsListener} / {@code PhoneStateListener}
+     * 回调式读取，全程不碰 {@code getVendorLevel}。
+     *
+     * <p><b>重绑策略</b>：按当前活动 subId 集合与上次绑定集合比对，仅在变化时
+     * 反注册旧监听、注册新监听（换卡/拔插卡时刷新）；未变化直接返回，避免每次
+     * 2s 轮询都反复注册。
+     */
+    private static void bindSignalListeners(TelephonyManager tel, List<SubscriptionInfo> infos) {
+        if (tel == null) {
+            return;
+        }
+        try {
+            // 当前活动卡的 subId，按 slot 归档（与 levelOf/sampleSims 的 slot 口径一致）
+            final int[] subs = { -1, -1 };
+            if (infos != null) {
+                for (int i = 0; i < infos.size(); i++) {
+                    final SubscriptionInfo info = infos.get(i);
+                    if (info == null) {
+                        continue;
+                    }
+                    final int slot = info.getSimSlotIndex();
+                    if (slot >= 0 && slot < SIM_SLOTS) {
+                        subs[slot] = info.getSubscriptionId();
+                    }
+                }
+            }
+            // 未变化 → 不重绑
+            if (subs[0] == sBoundSubs[0] && subs[1] == sBoundSubs[1]) {
+                return;
+            }
+            // 反注册旧监听、清旧缓存
+            for (int i = 0; i < SIM_SLOTS; i++) {
+                final PhoneStateListener old = sBoundListeners[i];
+                if (old != null) {
+                    try {
+                        tel.listen(old, PhoneStateListener.LISTEN_NONE);
+                    } catch (Throwable ignored) {
+                        // 反注册失败无害
+                    }
+                    sBoundListeners[i] = null;
+                }
+                final int oldSub = sBoundSubs[i];
+                if (oldSub >= 0) {
+                    synchronized (sSigLock) {
+                        sSigBySub.remove(oldSub);
+                    }
+                }
+            }
+            // 注册新监听 + 立刻做一次同步读作为种子（不必等首次回调）
+            for (int i = 0; i < SIM_SLOTS; i++) {
+                sBoundSubs[i] = subs[i];
+                final int subId = subs[i];
+                if (subId < 0) {
+                    continue;
+                }
+                final TelephonyManager perSim = tel.createForSubscriptionId(subId);
+                if (perSim == null) {
+                    continue;
+                }
+                // 种子：先放一次同步读，避免首个回调到达前缓存为空
+                try {
+                    final SignalStrength seed = perSim.getSignalStrength();
+                    if (seed != null) {
+                        synchronized (sSigLock) {
+                            sSigBySub.put(subId, seed);
+                        }
+                    }
+                } catch (Throwable ignored) {
+                    // 种子失败无害，等回调
+                }
+                final PhoneStateListener l = new PhoneStateListener() {
+                    @Override
+                    public void onSignalStrengthsChanged(SignalStrength signalStrength) {
+                        if (signalStrength == null) {
+                            return;
+                        }
+                        synchronized (sSigLock) {
+                            sSigBySub.put(subId, signalStrength);
+                        }
+                    }
+                };
+                try {
+                    perSim.listen(l, PhoneStateListener.LISTEN_SIGNAL_STRENGTHS);
+                    sBoundListeners[i] = l;
+                } catch (Throwable ignored) {
+                    // 某些系统可能拒绝 per-sub 监听，退回主 TelephonyManager 亦可
+                }
+            }
+        } catch (Throwable ignored) {
+            // 绑定失败绝不影响其它读数
         }
     }
 
@@ -1123,11 +1279,20 @@ final class TrioState {
      */
     private static int levelOf(TelephonyManager tel, int subId) {
         try {
-            final TelephonyManager perSim = tel.createForSubscriptionId(subId);
-            if (perSim == null) {
-                return -1;
+            // ★ v100：优先读回调缓存里的真实 SignalStrength（9.0 上同步轮询
+            //   perSim.getSignalStrength() 返回的是 cells=[] 空对象，见 bindSignalListeners）。
+            //   缓存未命中才退回同步轮询。
+            SignalStrength strength;
+            synchronized (sSigLock) {
+                strength = sSigBySub.get(subId);
             }
-            final SignalStrength strength = perSim.getSignalStrength();
+            if (strength == null) {
+                final TelephonyManager perSim = tel.createForSubscriptionId(subId);
+                if (perSim == null) {
+                    return -1;
+                }
+                strength = perSim.getSignalStrength();
+            }
             if (strength == null) {
                 return -1;
             }
@@ -1164,14 +1329,24 @@ final class TrioState {
                 sLastRawRssi = readRssi(strength);
                 return vendorToDots(vendor);
             }
-            // 兜底 1：既有的 dBm 换算（v62 那版用户认可的行为），仅在拿不到 vendor 时走。
+            // ★ v100 兜底 1：公开 API —— 取所有 cell 的最高 level（0~4）。
+            //   One UI 9.0 上 getVendorLevel() 反射拿不到（vendor=-1），
+            //   但回调拿到的真实对象里 getCellSignalStrengths() 有完整 cell，
+            //   这是 9.0 的主路径；8.x 上 vendor 命中、永远走不到这里，无副作用。
+            final int cellLevel = levelFromCells(strength);
+            if (cellLevel >= 0) {
+                sLastLevelSrc = "cells";
+                sLastRawRssi = readRssi(strength);
+                return cellLevel;
+            }
+            // 兜底 2：既有的 dBm 换算（v62 那版用户认可的行为），仅在拿不到 vendor / cells 时走。
             final int rssi = readRssi(strength);
             sLastRawRssi = rssi;
             if (rssi > -126 && rssi < 200) { // 排除 INVALID(-127) 与异常值
                 sLastLevelSrc = "dbm";
                 return levelFromRssi(rssi);
             }
-            // 兜底 2：框架聚合档位（0~4）。
+            // 兜底 3：框架聚合档位（0~4）。
             final int level = strength.getLevel();
             sLastLevelSrc = "frame";
             return (level < 0 || level > 4) ? -1 : level;
@@ -1309,6 +1484,39 @@ final class TrioState {
             return best;
         } catch (Throwable t) {
             return -127;
+        }
+    }
+
+    /**
+     * ★ v100：公开 API 兜底 —— 取所有 cell 里最高的 {@code getLevel()}（0~4）。
+     *
+     * <p>用于 One UI 9.0 上 {@code getVendorLevel()} 反射拿不到（vendor=-1）时：
+     * {@code getCellSignalStrengths()} 是公开 API，每个 {@link CellSignalStrength#getLevel()}
+     * 给出该制式的 0~4 档。多路（CA 载波聚合等）取最高者，最接近实际可用信号。
+     * 拿不到有效 cell（空列表或全 -1）时返回 -1，交给后续 dBm / getLevel 兜底。
+     *
+     * <p>8.x 上 {@code readVendorLevel} 命中、永远走不到这里，对既有行为无副作用。
+     */
+    private static int levelFromCells(SignalStrength s) {
+        try {
+            final List<CellSignalStrength> cells = s.getCellSignalStrengths();
+            if (cells == null || cells.isEmpty()) {
+                return -1;
+            }
+            int best = -1;
+            for (int i = 0; i < cells.size(); i++) {
+                final CellSignalStrength c = cells.get(i);
+                if (c == null) {
+                    continue;
+                }
+                final int lv = c.getLevel();
+                if (lv > best) {
+                    best = lv;
+                }
+            }
+            return (best < 0 || best > 4) ? -1 : best;
+        } catch (Throwable t) {
+            return -1;
         }
     }
 

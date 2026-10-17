@@ -193,18 +193,22 @@ public final class TrioAppearance {
     }
 
     /**
-     * Whether the glyph draws the bolt itself: only while it also draws the
-     * percentage the bolt replaces.
+     * Whether the glyph draws the charging bolt itself.
      *
-     * <p>This one line is why the bolt has no effect when the percentage is off,
-     * which is the behaviour the settings screen now explains instead of leaving
-     * the user to discover.
+     * <p><b>★ v100：闪电开关独立化。</b>此前这里返回 {@code boltWanted && value}，
+     * 把"充电闪电"和"电量数字"两个开关绑死了：关掉电量数字后，闪电也不再画，
+     * 设置页里"充电时显示闪电"跟着被禁用（用户原话：关电量后这个按钮就废了）。
+     * 现改为只认 {@code boltWanted}。
+     *
+     * <p>电量数字关掉时 {@code Ring.hasValue=false → valueInGap=false → chargePair=false}，
+     * 于是走 {@code TrioRenderer} 的 {@code r.bolt && !chargePair} 分支 ——
+     * 闪电单独画在 12 点充电缺口（{@code GAP_START_CHARGE} 窄缺口），正是想要的效果。
      *
      * <p>Not gated on {@link #glyph}, because the preview keeps drawing the
      * chosen arrangement while the master switch is off.
      */
     public boolean drawsBolt() {
-        return boltWanted && value;
+        return boltWanted;
     }
 
     /**
@@ -368,7 +372,7 @@ public final class TrioAppearance {
 
             // The plug, not the bolt: charging suppresses the second row whether
             // or not this frame happens to draw a bolt for it (the bolt is
-            // conditional on the percentage being on, the plug never is).
+            // conditional on its own switch since v100, the plug never is).
             dual = a.dualSimRows(wifi, charging, sims);
             // The dual reading's top row owns the 12 o'clock notch, so the
             // percentage cannot be drawn there: it moves to the ring centre,
