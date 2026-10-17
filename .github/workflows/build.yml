@@ -105,8 +105,10 @@ jobs:
       - name: Collect
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/release/app-release.apk \
-             "dist/SamsungDuo-${{ steps.stamp.outputs.name || 'dev' }}.apk"
+          # 产物名由 build.gradle.kts 的 androidComponents 决定（SamsungDuo-<version>.apk），
+          # 不再固定为 app-release.apk，这里按目录里实际生成的 apk 取。
+          src="$(ls -1 app/build/outputs/apk/release/*.apk | head -n 1)"
+          cp "$src" "dist/SamsungDuo-${{ steps.stamp.outputs.name || 'dev' }}.apk"
           ls -l dist
 
       - uses: actions/upload-artifact@v4
