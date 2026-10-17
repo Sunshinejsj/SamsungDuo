@@ -79,7 +79,15 @@ public final class SamsungDuoModule extends XposedModule {
                 //   不豁免限流就会被 100ms 节流吃掉（v47 踩过一次，见 shade-diag）。
                 || msg.startsWith("sigcfg")
                 // ★ v65：行内几何 dump 同样是连打十几行，必须豁免限流。
-                || msg.startsWith("geometry ");
+                || msg.startsWith("geometry ")
+                // ★ 裁剪守卫相关诊断（实测这些行紧挨着输出，不豁免会被 100ms 限流吞掉，
+                //   导致"能力清单缺失"被误读成"hook 没装上"）。
+                || msg.startsWith("clip-guard ready")
+                || msg.startsWith("window-root guard ready")
+                || msg.startsWith("clip-blocked")
+                || msg.startsWith("clip reset")
+                || msg.startsWith("window-clip-fixed")
+                || msg.startsWith("row padding changed");
     }
 
     /**

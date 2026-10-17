@@ -121,6 +121,8 @@ public final class TrioHooks {
         // ★ v58：真正的取色路径（浅色背景下和别的图标一起变深）。
         final int darkHooks = hookDarkReceivers(module, cl);
         n += darkHooks;
+        n += hookClipGuards(module, cl);
+        n += hookWindowRootClip(module, cl);
         log(LOG_INFO, "Samsung hooks installed: " + n
                 + " (bar=" + barHooks
                 + ", shade=" + shadeHooks
@@ -620,6 +622,235 @@ public final class TrioHooks {
      * 好处是不必复算调度器的调色公式（那个公式要 areas + darkIntensity，
      * 自己算容易错），拿到的就是系统当场画出去的颜色，天然一致。
      */
+    /**
+     * ★ L20：在 **setter 上当场拦截**，不再靠轮询纠正。
+     *
+     * <p>背景：别的模块（含 OneuiXP）会周期性把状态栏那棵树的祖先
+     * {@code clipChildren} / {@code clipToPadding} 设回 true（实测目标多在
+     * {@code StatusBarWindowView}），我们的图标上下溢出随即被裁。此前用每 N 帧轮询纠正，
+     * 中间有 ~100ms 的可见闪一下；缩短周期反而更频繁地与它对抗。
+     *
+     * <p>这里改成：只要目标是三合一的祖先链上的 View，就把 true 改写成 false 再放行，
+     * 对方永远看不到"裁剪被打开"的中间态。开销只在他调用时发生，我们不做任何轮询。
+     */
+    private static final ThreadLocal<Boolean> CLIP_GUARD = new ThreadLocal<>();
+    private static int sWindowRootHooks = 0;
+
+        private static int hookClipGuards(XposedModule module, ClassLoader cl) {
+        int n = 0;
+        int okChildren = 0;
+        int okPadding = 0;
+        try {
+            final Method mChildren = boolSetter(android.view.ViewGroup.class,
+                    "setClipChildren");
+            okChildren = (mChildren != null) ? 1 : 0;
+            if (mChildren == null) {
+                log(LOG_WARN, "setClipChildren not found on ViewGroup (guard skipped)");
+            }
+            if (mChildren != null) {
+                n += hook(module, mChildren, "samsungduo-clip-children",
+                        new XposedInterface.Hooker() {
+                            @Override
+                            public Object intercept(XposedInterface.Chain chain) throws Throwable {
+                                if (Boolean.TRUE.equals(CLIP_GUARD.get())) {
+                                    return chain.proceed();
+                                }
+                                final Object self = chain.getThisObject();
+                                if (Boolean.TRUE.equals(chain.getArg(0))
+                                        && self instanceof View
+                                        && TrioOverlay.shouldBlockClip((View) self)) {
+                                    CLIP_GUARD.set(Boolean.TRUE);
+                                    try {
+                                        chain.proceed(new Object[]{Boolean.FALSE});
+                                    } finally {
+                                        CLIP_GUARD.remove();
+                                    }
+                                    TrioOverlay.noteClipBlocked((View) self, "children");
+                                    return null;
+                                }
+                                return chain.proceed();
+                            }
+                        });
+            }
+        } catch (Throwable t) {
+            log(LOG_WARN, "clip guard (children) failed: " + t);
+        }
+        try {
+            final Method mPad = boolSetter(android.view.View.class,
+                    "setClipToPadding");
+            okPadding = (mPad != null) ? 1 : 0;
+            if (mPad == null) {
+                log(LOG_WARN, "setClipToPadding not found on View (guard skipped)");
+            }
+            if (mPad != null) {
+                n += hook(module, mPad, "samsungduo-clip-padding",
+                        new XposedInterface.Hooker() {
+                            @Override
+                            public Object intercept(XposedInterface.Chain chain) throws Throwable {
+                                if (Boolean.TRUE.equals(CLIP_GUARD.get())) {
+                                    return chain.proceed();
+                                }
+                                final Object self = chain.getThisObject();
+                                if (Boolean.TRUE.equals(chain.getArg(0))
+                                        && self instanceof View
+                                        && TrioOverlay.shouldBlockClip((View) self)) {
+                                    CLIP_GUARD.set(Boolean.TRUE);
+                                    try {
+                                        chain.proceed(new Object[]{Boolean.FALSE});
+                                    } finally {
+                                        CLIP_GUARD.remove();
+                                    }
+                                    TrioOverlay.noteClipBlocked((View) self, "padding");
+                                    return null;
+                                }
+                                return chain.proceed();
+                            }
+                        });
+            }
+        } catch (Throwable t) {
+            log(LOG_WARN, "clip guard (padding) failed: " + t);
+        }
+        // ★ 能力清单：一眼确认装的是哪一版（setter / 生命周期 / 绘制兜底各装了几个）
+        sClipGuardSetters = n;
+        log(LOG_INFO, "clip-guard ready: setters=" + n
+                + " (children=" + okChildren + ", padding=" + okPadding + ")");
+        return n;
+    }
+
+    /**
+     * 找 boolean setter 的 Method。{@code Refl.method} 用 getDeclaredMethod，
+     * 在这台机器上 {@code View.setClipToPadding} 会返回 null（ROM 把它收窄了），
+     * 所以再按 {@code getMethods()} 兜一遍，并明确告警，绝不静默跳过。
+     */
+    private static Method boolSetter(Class<?> c, String name) {
+        final Method m = Refl.method(c, name, boolean.class);
+        if (m != null) {
+            return m;
+        }
+        try {
+            for (final Method x : c.getMethods()) {
+                final Class<?>[] p = x.getParameterTypes();
+                if (x.getName().equals(name) && p.length == 1 && p[0] == boolean.class) {
+                    x.setAccessible(true);
+                    return x;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    private static int sClipGuardSetters = 0;
+
+    /**
+     * ★ L22：状态栏**窗口根**的裁剪只能在它自己身上关。
+     *
+     * <p>实测（每分钟整点）：{@code StatusBarWindowView} 会重建/重排，重建后的实例
+     * {@code mClipChildren} 又是 true。而 Android 的 {@code ViewGroup} 构造函数是
+     * **直接写字段**（{@code mClipChildren = attrs.getBoolean(clipChildren, true)}），
+     * **不经过 setter** ⇒ hook {@code setClipChildren} 拦不到它，逐帧检查也只是事后补救。
+     *
+     * <p>所以改成：hook 它自己的 {@code onFinishInflate} / {@code onAttachedToWindow}，
+     * 在"刚重建完"这一刻把裁剪关掉。用它自己的方法，不碰别的 View，也不用猜层级。
+     */
+    private static int hookWindowRootClip(XposedModule module, ClassLoader cl) {
+        // ★ L23：不再猜包名（实测 `com.android.systemui.statusbar.phone.StatusBarWindowView`
+        //   在 OneUI 8 上不存在，简单名是 StatusBarWindowView 但包路径不同，v1.0 直接被跳过）。
+        //   改成 hook framework 的 ViewGroup 生命周期，按**简单名**判定，
+        //   两个 hook 都在"刚挂上/刚 inflate 完"这一刻跑，频率极低。
+        int n = 0;
+        n += hookWindowRootClipOn(module, "onAttachedToWindow", new Class<?>[0]);
+        n += hookWindowRootClipOn(module, "onFinishInflate", new Class<?>[]{android.view.View.class});
+        // ★ L24：实测上面两个生命周期 hook **一次都没命中**（`window-clip-fixed` = 0），
+        //   而 `clip reset` 仍在 ⇒ 对方是**反射直接写私有字段 `mClipChildren`**，
+        //   既不走 setter、也不伴随重新挂载。所以最后加一层"绘制时兜底"：
+        //   在它自己 draw 的**入口**把裁剪按回 false —— 裁剪判断发生在绘制过程里，
+        //   在 super.draw 之前改，**同一帧就生效**，肉眼看不到任何闪。
+        n += hookWindowRootDraw(module);
+        if (n == 0) {
+            log(LOG_WARN, "window-root clip guard skipped (lifecycle methods not found)");
+        }
+        sWindowRootHooks = n;
+        log(LOG_INFO, "window-root guard ready: hooks=" + n
+                + " (setters=" + sClipGuardSetters + ")");
+        return n;
+    }
+
+    /** 绘制入口兜底：只有"标志真的被打开"时才写回，避免每帧写导致 invalidate 风暴。 */
+    private static int hookWindowRootDraw(XposedModule module) {
+        final Method m = Refl.method(android.view.ViewGroup.class, "draw",
+                android.graphics.Canvas.class);
+        if (m == null) {
+            return 0;
+        }
+        return hook(module, m, "samsungduo-windowclip-draw",
+                new XposedInterface.Hooker() {
+                    @Override
+                    public Object intercept(XposedInterface.Chain chain) throws Throwable {
+                        final Object self = chain.getThisObject();
+                        if (self instanceof ViewGroup && isStatusBarWindowRoot((ViewGroup) self)) {
+                            final ViewGroup vg = (ViewGroup) self;
+                            if (vg.getClipChildren() || vg.getClipToPadding()) {
+                                CLIP_GUARD.set(Boolean.TRUE);
+                                try {
+                                    vg.setClipChildren(false);
+                                    vg.setClipToPadding(false);
+                                } finally {
+                                    CLIP_GUARD.remove();
+                                }
+                                TrioOverlay.noteWindowClipFixed(vg);
+                            }
+                        }
+                        return chain.proceed();
+                    }
+                });
+    }
+
+    private static int hookWindowRootClipOn(XposedModule module, String name, Class<?>[] sig) {
+        final Method m = Refl.method(android.view.ViewGroup.class, name, sig);
+        if (m == null) {
+            return 0;
+        }
+        return hook(module, m, "samsungduo-windowclip-" + name,
+                new XposedInterface.Hooker() {
+                    @Override
+                    public Object intercept(XposedInterface.Chain chain) throws Throwable {
+                        final Object result = chain.proceed();
+                        try {
+                            final Object self = chain.getThisObject();
+                            if (self instanceof ViewGroup && isStatusBarWindowRoot((ViewGroup) self)) {
+                                final ViewGroup vg = (ViewGroup) self;
+                                CLIP_GUARD.set(Boolean.TRUE);
+                                try {
+                                    vg.setClipChildren(false);
+                                    vg.setClipToPadding(false);
+                                } finally {
+                                    CLIP_GUARD.remove();
+                                }
+                                TrioOverlay.noteWindowClipFixed(vg);
+                            }
+                        } catch (Throwable ignored) {
+                        }
+                        return result;
+                    }
+                });
+    }
+
+    /** 是否状态栏窗口根：只看简单名，避免猜包名（三星各版本包路径不同）。 */
+    private static boolean isStatusBarWindowRoot(ViewGroup vg) {
+        try {
+            final String simple = vg.getClass().getSimpleName();
+            if (simple.contains("StatusBarWindowView")
+                    || simple.contains("PhoneStatusBarWindowView")) {
+                return true;
+            }
+            // 兜底：任何以 WindowView 结尾、且是三合一祖先的容器
+            return simple.endsWith("WindowView") && TrioOverlay.shouldBlockClip(vg);
+        } catch (Throwable ignored) {
+        }
+        return false;
+    }
+
     private static int hookDarkReceivers(XposedModule module, ClassLoader cl) {
         int n = 0;
         for (String cls : DARK_RECEIVERS) {

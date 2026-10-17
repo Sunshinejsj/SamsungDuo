@@ -788,12 +788,39 @@ public final class TrioOverlay {
             //   （日志 52 抓到瞬态 107 被写进缓存 ⇒ 之后每次都拿 107 当基准）。
             //   v108 不再靠"一次算准"，改为**改完之后再复核几帧**（见 armSettle），
             //   让尺寸自己收敛到稳定值 —— 不需要猜、不需要缓存。
-            final int heightBase = containerH;
+            // ★ L12：封顶基准改用**内容高度**（扣掉父容器上下 padding）。
+            //   别的模块（OneuiXP 等）会给图标行 setPadding；行总高不变，但可用区变矮，
+            //   我们按总高封顶就会多出一截伸进 padding 区 → 被更上层的边界裁掉。
+            //   同时把 padding 打一次日志，便于确认行内边距是否被外部改过。
+            final int padTop = parent.getPaddingTop();
+            final int padBottom = parent.getPaddingBottom();
+            // ★ L25：行 padding **变化时才打**（原来只打一次）。
+            //   OneuiXP 会按自己的配置调 setPaddingRelative（反编译见 La43;.b，
+            //   实参来自它配置里的浮点 dp），行内可用区因此变矮 → 我们 130% 越过裁剪线。
+            if (padTop != lastPadTop || padBottom != lastPadBottom) {
+                lastPadTop = padTop;
+                lastPadBottom = padBottom;
+                TrioHooks.log(LOG_OK, "row padding changed: top=" + padTop
+                        + " bottom=" + padBottom
+                        + " padL=" + parent.getPaddingLeft()
+                        + " padR=" + parent.getPaddingRight()
+                        + " rowH=" + containerH
+                        + " rowW=" + parent.getWidth()
+                        + " (cap uses content height=" + (containerH - padTop - padBottom) + ")");
+            }
+            final int contentH = containerH - padTop - padBottom;
+            final int heightBase = (contentH > 0 ? contentH
+                    : (containerH > 0 ? containerH : lastHeightBase));
             this.lastHeightBase = heightBase;
             int h = w; // 正方形
             // ★ v75：整体尺寸 >100% 时跳过"行高上限"。该上限本来的职责是防止
             //   被行边界裁剪，而 >100% 已靠上面的 allowOverflow 关掉裁剪 ——
             //   再压高度就放大不上去（还会把宽一起压回来，白放大）。
+            // ★ L11：这一行**不再按 >100% 跳过**。跳过是独立悬浮窗时代（v75/v80）的做法；
+            //   v103 放弃悬浮窗回到树模式后，状态栏窗口本身就只有行高那么高 ——
+            //   实机日志 2122/2913 条 `h > rowH`（视图 114~124px 塞进 84/90px 的行），
+            //   超出的部分被**窗口边界**裁掉，用户看到"放大后被剪切、拉一下才还原、过一会又剪切"。
+            //   树模式下行高/窗口高度就是物理上限：封顶后缩到刚好放下，而不是被切。
             if (heightBase > 0 && !overCap) {
                 int base = heightBase;
                 if (shadeRow) {
@@ -1703,8 +1730,266 @@ public final class TrioOverlay {
      *
      * @return 是否真的改了（没改就不必重绘）
      */
+    /**
+     * 重新打开整条祖先链的裁剪（clipChildren + clipToPadding 都设 false）。
+     * 只在应用尺寸时调用；若发现标志被别人关回去了，打一次日志。
+     */
+    private void reassertClipOpen() {
+        try {
+            // ★ 限频：60fps 下每 3 帧查一次（≈20 次/秒）。实测对方**每分钟整点**才设一次裁剪
+            //   （间隔 56~64 秒），正常情况下这里几乎全是"读了发现没被开、直接返回"，
+            //   真正的写入每分钟只有几次；提到 3 帧是为了在漏拦时把可见窗口压到 ~50ms。
+            if ((drawTick++ & 0x0B) != 0) {
+                return;
+            }
+            final android.view.ViewParent start = glyph.getParent();
+            if (!(start instanceof View)) {
+                return;
+            }
+            android.view.View v = (android.view.View) start;
+            int guard = 0;
+            boolean flipped = false;
+            boolean flippedOutline = false;
+            while (v instanceof ViewGroup && guard++ < 12) {
+                final ViewGroup vg = (ViewGroup) v;
+                if (vg.getClipChildren() || vg.getClipToPadding()) {
+                    flipped = true;
+                }
+                vg.setClipChildren(false);
+                vg.setClipToPadding(false);
+                // ★ 第三种裁剪机制：**轮廓裁剪**（clipToOutline）。它与 clipChildren /
+                //   clipToPadding / clipBounds 都独立，只有设了 OutlineProvider 才会生效。
+                //   实测：停用 OneuiXP 不裁、启用就裁，而前两项都没被改过 ——
+                //   而 OneuiXP 的 dex 里正好有 setOutlineProvider/setClipToOutline。
+                //   这里一并关掉，并在发现它是开着时打日志（那就是裁剪的真凶）。
+                if (Boolean.TRUE.equals(boolCallCached(vg))) {
+                    flippedOutline = true;
+                }
+                setClipToOutlineCached(vg, false);
+                final android.view.ViewParent up = vg.getParent();
+                if (!(up instanceof android.view.View)) {
+                    break;
+                }
+                v = (android.view.View) up;
+            }
+            if (flipped || flippedOutline) {
+                    // ★ 计频：别的模块恢复裁剪的频率，决定我们限频该取多少。
+                    //   前 12 次逐条打，之后每 12 条打一次，带与上次的间隔。
+                    final long now = android.os.SystemClock.uptimeMillis();
+                    final long gap = (lastClipResetMs == 0) ? -1 : (now - lastClipResetMs);
+                    lastClipResetMs = now;
+                    clipResetCount++;
+                    if (clipResetCount <= 12 || (clipResetCount % 12) == 0) {
+                        TrioHooks.log(LOG_OK, "clip reset #" + clipResetCount
+                                + " gap=" + (gap < 0 ? "first" : gap + "ms")
+                                + " via=" + (flipped ? "children/padding" : "outline")
+                                + " root=" + v.getClass().getSimpleName());
+                    }
+                }
+                if (flippedOutline && !outlineConflictLogged) {
+                    outlineConflictLogged = true;
+                    TrioHooks.log(LOG_OK, "overlay: clipToOutline was ON (OutlineProvider "
+                            + "clipping) -> set false, root=" + v.getClass().getSimpleName()
+                        + "  <== 若裁剪随之消失，真凶就是它");
+            }
+            // ★ 实测"行高/行布局是不是被别的模块动了"（哪怕它的功能开关是关的）：
+            //   记录行 LayoutParams 的 height 与 gravity 的变化，变了就打一行。
+            //   与我们自己的 `resized in place` 对照时间，就能分辨是谁改的。
+            try {
+                final android.view.ViewParent par = glyph.getParent();
+                if (par instanceof android.view.View) {
+                    final android.view.View p0 = (android.view.View) par;
+                    final android.view.ViewGroup.LayoutParams lp = ((android.view.View) p0).getLayoutParams();
+                    if (lp != null) {
+                        final int h0 = lp.height;
+                        int g0 = -1;
+                        if (lp instanceof android.widget.LinearLayout.LayoutParams) {
+                            g0 = ((android.widget.LinearLayout.LayoutParams) lp).gravity;
+                        } else if (lp instanceof android.widget.FrameLayout.LayoutParams) {
+                            g0 = ((android.widget.FrameLayout.LayoutParams) lp).gravity;
+                        }
+                        if (h0 != lastSeenRowLpH || g0 != lastSeenRowGravity) {
+                            TrioHooks.log(LOG_OK, "row-lp: height " + lastSeenRowLpH + " -> " + h0
+                                    + ", gravity " + lastSeenRowGravity + " -> " + g0
+                                    + " (row=" + p0.getClass().getSimpleName() + ")");
+                            lastSeenRowLpH = h0;
+                            lastSeenRowGravity = g0;
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+ * ★ L20 配套：判断某个 View 是否在**任意一个三合一的祖先链**上（含窗口根）。
+     * 是的话就不允许把它的裁剪打开。
+     */
+    /** 窗口根重建后我们把它的裁剪关掉的计数日志。 */
+    static void noteWindowClipFixed(View v) {
+        try {
+            windowClipFixedCount++;
+            if (windowClipFixedCount <= 12 || (windowClipFixedCount % 12) == 0) {
+                TrioHooks.log(LOG_OK, "window-clip-fixed #" + windowClipFixedCount
+                        + " on=" + ((v == null) ? "?" : v.getClass().getSimpleName())
+                        + " (clipChildren/clipToPadding=false)");
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static int windowClipFixedCount = 0;
+
+    static boolean shouldBlockClip(View v) {
+        if (v == null) {
+            return false;
+        }
+        try {
+            // ① 祖先链判定（三合一已挂载时最准）
+            for (final TrioOverlay inst : sLiveMap.values()) {
+                if (inst == null) {
+                    continue;
+                }
+                final View g = inst.glyph;
+                if (g != null && isAncestorOrSelf(v, g)) {
+                    return true;
+                }
+                // ② root 也算：刚重建/切锁屏那一瞬 glyph 可能还没挂上，
+                //    但 statusBarRoot 已经在树上，用它兜住。
+                final View r = inst.statusBarRoot;
+                if (r != null && isAncestorOrSelf(v, r)) {
+                    return true;
+                }
+            }
+            // ③ 类名兜底：状态栏窗口根。实测对方每分钟在这里也开一次裁剪，
+            //    而那一瞬未必有实例挂载，祖先链判不到。
+            final String n = v.getClass().getName();
+            if (n.contains("StatusBarWindowView") || n.contains("PhoneStatusBarView")) {
+                return true;
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
+    }
+
+    /** v 是否为 target 自身或其祖先。 */
+    private static boolean isAncestorOrSelf(View v, View target) {
+        View p = target;
+        for (int i = 0; p != null && i < 24; i++,
+                p = (p.getParent() instanceof View) ? (View) p.getParent() : null) {
+            if (p == v) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 被别的模块试图打开裁剪时的计数日志（前 12 次逐条，之后每 12 条一条）。 */
+    static void noteClipBlocked(View v, String via) {
+        try {
+            clipBlockedCount++;
+            if (clipBlockedCount <= 12 || (clipBlockedCount % 12) == 0) {
+                TrioHooks.log(LOG_OK, "clip-blocked #" + clipBlockedCount
+                        + " via=" + via
+                        + " on=" + ((v == null) ? "?" : v.getClass().getSimpleName())
+                        + " (forced false)");
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static int clipBlockedCount = 0;
+
+    private boolean clipConflictLogged = false;
+    private int clipResetCount = 0;
+    private long lastClipResetMs = 0;
+    private int drawTick = 0;
+    /** ★ 静态缓存反射 Method：每帧调用，避免反复查找（getClipToOutline 是 API 31+）。 */
+    private static final java.lang.reflect.Method M_GET_CLIP_TO_OUTLINE =
+            cachedMethod("getClipToOutline");
+    private static final java.lang.reflect.Method M_SET_CLIP_TO_OUTLINE =
+            cachedMethod("setClipToOutline", boolean.class);
+
+    private static java.lang.reflect.Method cachedMethod(String name, Class<?>... args) {
+        try {
+            return android.view.View.class.getMethod(name, args);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+    private boolean outlineConflictLogged = false;
+    private boolean padLogged = false;
+    private int lastPadTop = Integer.MIN_VALUE;
+    private int lastPadBottom = Integer.MIN_VALUE;
+
+    /** 反射调一个无参 boolean getter（getClipToOutline 等）；失败返回 null。 */
+    /** 用**静态缓存**的 Method 调 getClipToOutline，避免每帧做方法查找。 */
+    private static Object boolCallCached(Object target) {
+        final java.lang.reflect.Method m = M_GET_CLIP_TO_OUTLINE;
+        if (m == null) {
+            return null;
+        }
+        try {
+            return m.invoke(target);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static void setClipToOutlineCached(Object target, boolean v) {
+        final java.lang.reflect.Method m = M_SET_CLIP_TO_OUTLINE;
+        if (m == null) {
+            return;
+        }
+        try {
+            m.invoke(target, Boolean.valueOf(v));
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 反射调一个无参 boolean getter（getClipToOutline 等）；失败返回 null。 */
+    private static Object boolCall(Object target, String name) {
+        try {
+            final java.lang.reflect.Method m = findMethod(target.getClass(), name);
+            return (m == null) ? null : m.invoke(target);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    /** 反射调一个 (boolean) 无返回值方法（setClipToOutline 等）。 */
+    private static void voidCall(Object target, String name, boolean arg) {
+        try {
+            final java.lang.reflect.Method m = findMethod(target.getClass(), name);
+            if (m != null) {
+                m.invoke(target, Boolean.valueOf(arg));
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static java.lang.reflect.Method findMethod(Class<?> c, String name) {
+        for (Class<?> k = c; k != null; k = k.getSuperclass()) {
+            try {
+                return k.getDeclaredMethod(name);
+            } catch (Throwable ignored) {
+            }
+        }
+        return null;
+    }
+
+    private int lastSeenRowLpH = -1;
+    private int lastSeenRowGravity = -1;
+
     private boolean applyGlyphLp(int w, int h, int leftMargin) {
         try {
+            // ★ 与其它模块共处：同一条状态栏行上，OneuiXP 等模块也会 setClipChildren/
+            //   setClipToPadding/setPadding，谁后写谁赢。挂载时关一次不够 ——
+            //   每次应用尺寸都重新assert一遍（幂等、只在尺寸变化时调用，开销可忽略），
+            //   被别人改回去时打一行日志，便于确认冲突来源。
+            reassertClipOpen();
             final ViewGroup.LayoutParams lp = glyph.getLayoutParams();
             if (lp == null) {
                 return false;
@@ -1883,6 +2168,10 @@ public final class TrioOverlay {
                 while (v instanceof ViewGroup && guard++ < 12) {
                     final ViewGroup vg = (ViewGroup) v;
                     vg.setClipChildren(false);
+                    // ★ 实机日志抓到：只关 clipChildren 不够 —— 每个祖先默认
+                    //   clipToPadding=true，子 View 超出**padding 边界**照样被裁。
+                    //   日志里 rowH=84/90 而视图 121px（scale≈126）被切，就是这一层。
+                    vg.setClipToPadding(false);
                     if (chain.length() < 160) {
                         if (chain.length() > 0) {
                             chain.append(" < ");
@@ -1905,11 +2194,13 @@ public final class TrioOverlay {
                 return;
             }
             row.setClipChildren(false);
+            row.setClipToPadding(false);
             final android.view.ViewParent p = row.getParent();
             if (p instanceof ViewGroup) {
                 // 外壳 FrameLayout(shade_header_system_icons) 也只有 84px 高，
                 // 同样会裁掉溢出的部分，必须一起关。
                 ((ViewGroup) p).setClipChildren(false);
+                ((ViewGroup) p).setClipToPadding(false);
             }
             if (!overflowLogged) {
                 overflowLogged = true;
@@ -2765,6 +3056,8 @@ public final class TrioOverlay {
         private boolean appliedLandscape = false;
         /** ★ v108：上次按它算过尺寸的「整体尺寸」滑块值。 */
         private int appliedScale = -1;
+        /** ★ 已应用尺寸时的行高；行高一变就必须重算，否则会被更矮的行裁掉。 */
+        private int appliedRowH = -1;
 
         /**
          * ★ v108：配置变化（旋转 / 密度 / 折叠展开）由 ViewRootImpl 递归分发到每个
@@ -2805,8 +3098,12 @@ public final class TrioOverlay {
                 // ★ v108：无条件刷新全局方向标记（幂等，值由 Configuration 决定）。
                 final boolean land = refreshLandscape(this);
                 final int scale = TrioConfig.get().glyphScale;
-                if (land == appliedLandscape && scale == appliedScale) {
-                    // 方向/尺寸没变：只在"刚改过、还没收敛"时继续复核。
+                // ★ 行高也必须参与判定：锁屏↔状态栏切换、下拉收起↔展开、状态栏两行互换，
+                //   行高都会变，而方向与「整体尺寸」没动 —— 旧逻辑只看这两项，
+                //   于是尺寸停在上一行的取值上，被更矮的那一行裁掉（用户报的「偶尔图标裁剪缺失」）。
+                final int rowH = (statusBarRoot == null) ? 0 : statusBarRoot.getHeight();
+                if (land == appliedLandscape && scale == appliedScale && rowH == appliedRowH) {
+                    // 方向/尺寸/行高都没变：只在"刚改过、还没收敛"时继续复核。
                     if (settleFrames > 0) {
                         settleFrames--;
                         remountNow();
@@ -2815,9 +3112,11 @@ public final class TrioOverlay {
                 }
                 appliedLandscape = land;
                 appliedScale = scale;
+                appliedRowH = rowH;
                 TrioHooks.log(TrioHooks.LOG_INFO, "rot: size change land=" + land
                         + " scale=" + scale
                         + " effScale=" + effectiveGlyphScale()
+                        + " rowH=" + rowH
                         + " tree=" + treeAttached
                         + " root=" + ((statusBarRoot == null)
                                 ? "?" : statusBarRoot.getClass().getSimpleName()));
@@ -2830,6 +3129,13 @@ public final class TrioOverlay {
 
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
+            // ★ 每帧校验裁剪标志，而不是只在"应用尺寸"时。
+            //   实机现象：停用 OneuiXP 不裁、启用就"过一会儿被上下裁"，打开我们 App 又立刻还原
+            //   —— 说明别的模块会周期性重建/重排状态栏那棵树，把祖先的
+            //   clipChildren / clipToPadding 恢复成 XML 默认（true），上下溢出部分被裁。
+            //   我们此前只在改尺寸时重开，没触发尺寸变化就一直被裁。
+            //   内部只在标志真的被打开时才写回，正常情况下零开销、不引发重排。
+            reassertClipOpen();
             // ★ v108：每帧尺寸复核（取代 v101b 的 checkRotation）。
             checkSize();
             try {
