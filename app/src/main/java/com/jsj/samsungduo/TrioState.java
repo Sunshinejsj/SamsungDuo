@@ -272,10 +272,31 @@ final class TrioState {
         try {
             final View probe = findTintProbe();
             if (probe != null) {
-                final int t = TrioHooks.tintFrom(probe);
+                int t = TrioHooks.tintFrom(probe);
+                // ★ 9.0 专属修正：OneUI 9.0 状态栏**左侧**的三星时钟/运营商名被染成固定灰
+                //   ff6f767d，9.9 的单 DFS 会先撞上它 → 状态栏取色恒灰。
+                //   这里**只在读到那个固定灰时**才换用真系统图标类的探针；
+                //   8.5 树里根本不会出现这个值 ⇒ 8.5 的取值路径与 9.9 逐行一致。
+                if (t == GRAY_CLOCK_9) {
+                    final View sys = searchSystemIcon(host, 0);
+                    if (sys != null && sys != probe) {
+                        final int t2 = TrioHooks.tintFrom(sys);
+                        if (t2 != 0 && t2 != t) {
+                            t = t2;
+                        }
+                    }
+                }
                 if (t != 0) {
                     mLastLiveTint = t;
                     sLastGoodTint = t;
+                    // 诊断：这次颜色是从**本界面这棵树里的哪个原生图标**读到的。
+                    // 下拉读到的若是状态栏图标类，说明它被状态栏调度器刷过，需要换探针。
+                    final String note = "probe[" + probe.getClass().getSimpleName()
+                            + "]=" + Integer.toHexString(t);
+                    if (!note.equals(mLastProbeNote)) {
+                        mLastProbeNote = note;
+                        TrioHooks.log(TrioHooks.LOG_INFO, note);
+                    }
                     return t;
                 }
             }
@@ -298,16 +319,44 @@ final class TrioState {
         if (c != null && c.getParent() != null) {
             return c;
         }
-        // ★ v101c：两阶段搜索 —— 先全树找【真系统图标类】，找不到才用【任意染色 View】兜底。
-        //   旧代码把两者写在同一个 DFS 里：9.0 状态栏【左侧】的三星时钟/运营商名是非容器、
-        //   已被染成固定灰 ff6f767d，DFS 先访问到左侧 → 兜底抢先返回这个错元素，
-        //   探针抓到时钟的灰而非右侧系统图标区的 StatusBarIconView ⇒ 状态栏取色恒灰、不随明暗。
-        View found = searchSystemIcon(host, 0);
-        if (found == null) {
-            found = searchAnyTinted(host, 0);
-        }
+        // ★ 9.9 原样：单个 DFS —— 先认三个系统图标类；遇到非容器且"已染色"的 View 也直接返回
+        //   （这条内联兜底正是 9.9 把下拉取对的关键：下拉那棵树里的图标类/染色路径与状态栏不同）。
+        //   ⚠ 不要再拆成"系统图标类优先 + 任意染色兜底"两阶段（那是适配 9.0 时改的），
+        //   两阶段会让 DFS 不再按树序先遇到谁就取谁，8.5 下拉因此变回跟状态栏一样。
+        final View found = searchTintProbe(host, 0);
         tintProbe = new java.lang.ref.WeakReference<View>(found);
         return found;
+    }
+
+    /** 9.9 原样的单 DFS 探针搜索。 */
+    private static View searchTintProbe(View v, int depth) {
+        if (v == null || depth > 12) {
+            return null;
+        }
+        try {
+            final String cn = v.getClass().getName();
+            if (cn.equals("com.android.systemui.statusbar.StatusBarIconView")
+                    || cn.equals("com.android.systemui.statusbar.policy.NetspeedView")
+                    || cn.equals("com.android.systemui.battery.BatteryMeterView")) {
+                return v;
+            }
+            if (!(v instanceof android.view.ViewGroup)) {
+                if (TrioHooks.tintFrom(v) != 0) {
+                    return v;
+                }
+            }
+            if (v instanceof android.view.ViewGroup) {
+                final android.view.ViewGroup g = (android.view.ViewGroup) v;
+                for (int i = 0; i < g.getChildCount(); i++) {
+                    final View r = searchTintProbe(g.getChildAt(i), depth + 1);
+                    if (r != null) {
+                        return r;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
     }
 
     /**
@@ -371,9 +420,8 @@ final class TrioState {
     private java.lang.ref.WeakReference<View> tintProbe;
     /** ★ v82b：本实例上一次成功从原生探针读到的颜色；探针暂时拿不到时沿用，绝不借其它实例（状态栏）的深色。 */
     private int mLastLiveTint = 0;
-    /** ★ v99：最近一次任一实例成功读到的真实色。作为某棵树探针"彻底读不到"时的绝对兜底 ——
-     *  用与系统当前主题一致的真实色，而不是 nightMode() 强制纯黑/纯白（那会让锁屏在浅色下永远黑字）。 */
-    private static int sLastGoodTint = 0;
+    // ★ 已删除 sLastGoodTint（跨实例 static 全局色）：它让"探针读不到"的下拉/锁屏
+    //   直接抄状态栏的颜色，造成三处界面被绑在一起。兜底改为本界面自己的背景（hostThemeTint）。
 
     /**
      * 在最早拿到真实 SystemUI 上下文处调用（见 TrioHooks.onViewCreated）。
@@ -1608,35 +1656,132 @@ final class TrioState {
 
     // ============================================================ 颜色
 
-    /** 状态栏图标应画成的颜色。优先用**本状态栏自己**的真实图标色，否则按系统深浅兜底。 */
+    /** 状态栏图标应画成的颜色。**只用本实例自己的信息**，绝不借别的界面。 */
     int foreground() {
-        // ★ v77：**第一优先**实时读本实例自己 host 树里的原生图标当前颜色。
-        //   "锁屏看锁屏、下拉看下拉、状态栏看状态栏；他变我就变、他不变我不变" ——
-        //   原生图标啥色我们就啥色，不自己造刷新节奏，也不借其它实例的颜色。
+        // ★ 修复（10.0 回归）：取值链里必须保留"本实例从 onDarkChanged 拿到的 mIconTint"，
+        //   并且**不能**再退回跨实例的全局色 sLastGoodTint ——
+        //   那一退，下拉/锁屏探针一旦读不到就直接抄状态栏的颜色，
+        //   表现就是"状态栏深色则下拉锁屏也深色、状态栏浅色才变浅色"。
+        //   现在的顺序：探针 → 本实例回调 → 本实例上一次 → 本界面自己的背景 → 系统主题兜底。
+        String src = "fallback";
         int t = liveTintFromHost();
+        if (t != 0) {
+            src = "probe";
+        }
         if (t == 0) {
-            // ★ v99：本实例至今没读到过自己的真实色（探针缺失/读 0）。先用"最近任一实例
-            //   读到的真实主题色"兜底（与系统当前主题一致，浅色就是浅色、深色就是深色），
-            //   而不是 nightMode() 强制纯黑/纯白 —— 那会让锁屏在浅色下永远黑字（=用户报的
-            //   "锁屏一直是深色"）。sLastGoodTint 恒为 0（系统刚起、谁都没读到）才退到 nightMode。
-            t = (sLastGoodTint != 0) ? sLastGoodTint
-                    : (nightMode() ? 0xFFFFFFFF : 0xFF000000);
+            // ★ v99（9.9 原样）：本实例至今没读到过自己的真实色时，用"最近任一实例读到的
+            //   真实主题色"兜底，而不是 nightMode() 强制纯黑/纯白。
+            if (sLastGoodTint != 0) {
+                t = sLastGoodTint;
+                src = "sLastGood";
+            } else {
+                t = nightMode() ? 0xFFFFFFFF : 0xFF000000;
+                src = "mode";
+            }
         }
         // ★ v82b：浅色背景下系统下发到原生图标的 tint 自带 alpha（半透明灰），
         //   直接拿来画会让 5G/数字/图标发灰、显得细。强制不透明，保留系统色相、实心显示。
         t = (t & 0x00FFFFFF) | 0xFF000000;
         if (t != 0) {
-            noteTint(t);
+            noteTint(t, src);
             return t;
         }
         return 0xFF000000;
     }
 
-    private void noteTint(int resolved) {
+    /**
+     * ★ 本界面自身的明暗兜底：向上找第一个"不透明纯色/渐变"背景（含 host 自己），
+     * 按背景亮度决定图标用深色还是浅色。找不到才退回系统的夜间模式。
+     *
+     * <p>下拉面板必须走这里 —— OneUI 上它的明暗与状态栏**互相独立**，
+     * 探针/回调读到的那棵树在下拉场景里往往已经被状态栏的暗色调度器刷过，
+     * 直接采信就会变成"下拉跟着状态栏变"。
+     */
+    private int hostThemeTint() {
+        try {
+            View v = host;
+            for (int i = 0; v != null && i < 16; i++,
+                    v = (v.getParent() instanceof View) ? (View) v.getParent() : null) {
+                final int c = solidColorOf(v.getBackground());
+                if (c != 0 && ((c >>> 24) & 0xFF) >= 0x80) {
+                    // 背景偏亮 → 图标用深色；偏暗 → 用浅色
+                    final int out = (luminance(c) >= 0.5) ? 0xFF000000 : 0xFFFFFFFF;
+                    if (out != mLastHostTint) {
+                        mLastHostTint = out;
+                        TrioHooks.log(TrioHooks.LOG_INFO, "bg[" + v.getClass().getSimpleName()
+                                + "]=" + Integer.toHexString(c) + " -> host "
+                                + (out == 0xFFFFFFFF ? "light" : "dark")
+                                + " (depth " + i + ")");
+                    }
+                    return out;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return 0;
+    }
+
+    /** 取一个不透明纯色背景：ColorDrawable 直接取；GradientDrawable 反射取首个色标。 */
+    private static int solidColorOf(android.graphics.drawable.Drawable bg) {
+        if (bg == null) {
+            return 0;
+        }
+        if (bg instanceof android.graphics.drawable.ColorDrawable) {
+            return ((android.graphics.drawable.ColorDrawable) bg).getColor();
+        }
+        try {
+            final java.lang.reflect.Method m = bg.getClass().getDeclaredMethod("getColors");
+            final Object arr = m.invoke(bg);
+            if (arr instanceof int[] && ((int[]) arr).length > 0) {
+                final int[] cs = (int[]) arr;
+                for (final int c : cs) {
+                    if (c != 0 && ((c >>> 24) & 0xFF) >= 0x80) {
+                        return c;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return 0;
+    }
+
+    private int mLastHostTint = 0;
+    /** 诊断用：上一次探针的 "类名=颜色"，变化时才打印。 */
+    private String mLastProbeNote = "";
+    /** ★ v99：最近一次任一实例成功读到的真实色（9.9 原样，本轮按 9.9 保留）。 */
+    private static int sLastGoodTint = 0;
+    /** ★ OneUI 9.0 专属：状态栏左侧时钟/运营商名的固定灰，命中它才换探针。 */
+    private static final int GRAY_CLOCK_9 = 0xff6f767d;
+
+    /**
+     * 本实例是不是下拉面板（{@code com.android.systemui.util.NoRemeasureMotionLayout}
+     * id=split_shade_status_bar）。下拉的明暗与状态栏独立，必须单独判。
+     */
+    private boolean isShadeSurface() {
+        if (host == null) {
+            return false;
+        }
+        try {
+            final String n = host.getClass().getName();
+            return n.contains("MotionLayout") || n.contains("ShadeHeader")
+                    || n.contains("NotificationPanelView");
+        } catch (Throwable ignored) {
+        }
+        return false;
+    }
+
+    private static double luminance(int color) {        final int r = (color >> 16) & 0xFF;
+        final int g = (color >> 8) & 0xFF;
+        final int b = color & 0xFF;
+        return (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
+    }
+
+    private void noteTint(int resolved, String src) {
         final String note = "tint[" + ((host == null) ? "?"
                 : host.getClass().getSimpleName()) + "]: iconTint="
                 + Integer.toHexString(mIconTint)
                 + " night=" + nightMode()
+                + " src=" + src
                 + " -> " + Integer.toHexString(resolved);
         if (!note.equals(mLastTint)) {
             mLastTint = note;
@@ -1644,6 +1789,8 @@ final class TrioState {
         }
     }
 
+    /** 夜间模式以 **host 自己的 context** 为准，拿不到才退回模块级 context。 */
+    /** 9.9 原样：夜间模式取模块级 SystemUI context。 */
     private boolean nightMode() {
         final Context context = sContext;
         if (context == null) {
