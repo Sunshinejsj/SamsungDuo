@@ -29,8 +29,8 @@ android {
         applicationId = "com.jsj.samsungduo"
         minSdk = 29
         targetSdk = 36
-        versionCode = tagVersionCode ?: 100
-        versionName = tagVersionName ?: "10.0"
+        versionCode = tagVersionCode ?: 101
+        versionName = tagVersionName ?: "10.1"
     }
 
     signingConfigs {
@@ -89,7 +89,8 @@ android {
 // 不再用默认的 app-release.apk。
 androidComponents {
     onVariants(selector().all()) { variant ->
-        val vn = (findProperty("samsungDuoVersionName") as String?)?.takeIf { it.isNotBlank() } ?: "10.0"
+        val vn = (findProperty("samsungDuoVersionName") as String?)?.takeIf { it.isNotBlank() }
+            ?: tagVersionName ?: "10.1"
         variant.outputs.forEach { output ->
             output.outputFileName.set("SamsungDuo-$vn.apk")
         }

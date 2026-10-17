@@ -669,14 +669,38 @@ public final class TrioHooks {
      * TextView 读 {@code getCurrentTextColor()}（网速就是这么被染色的）；
      * ViewGroup（电池是自绘容器）则往下找第一个有色的子 View。
      */
+    /** 反射取一个无参 int getter（如 Drawable.getTint / PorterDuffColorFilter.getColor）；取不到返回 0。 */
+    private static int intGetter(Object target, String name) {
+        if (target == null) {
+            return 0;
+        }
+        try {
+            for (Class<?> k = target.getClass(); k != null; k = k.getSuperclass()) {
+                final java.lang.reflect.Method m;
+                try {
+                    m = k.getDeclaredMethod(name);
+                } catch (Throwable missing) {
+                    continue;
+                }
+                final Object v = m.invoke(target);
+                if (v instanceof Integer) {
+                    return ((Integer) v).intValue();
+                }
+                return 0;
+            }
+        } catch (Throwable ignored) {
+        }
+        return 0;
+    }
+
     static int tintFrom(View v) {
         if (v instanceof android.widget.ImageView) {
             final android.widget.ImageView iv = (android.widget.ImageView) v;
             final android.content.res.ColorStateList csl = iv.getImageTintList();
             if (csl != null) {
-                // ★ v99：优先读"当前可见状态"的色。三星部分图标（尤其锁屏）用状态化
-                //   ColorStateList，getDefaultColor() 在默认态返回 0 导致读不到真色；
-                //   改用 getColorForState(当前 drawable 状态) 取实际显示色。
+                // ★ 9.9 原样（照抄，勿动顺序）：优先取当前显示状态的色；
+                //   三星部分图标（尤其锁屏）用状态化 ColorStateList，
+                //   getDefaultColor() 在默认态返回 0，只有 getColorForState 才拿得到真色。
                 final int c = csl.getColorForState(v.getDrawableState(), csl.getDefaultColor());
                 if (c != 0) {
                     return c;
@@ -685,6 +709,21 @@ public final class TrioHooks {
                 if (d != 0) {
                     return d;
                 }
+            }
+            // ★ OneUI 9.0 兜底：若染色没落在 ImageTintList 上（落在 drawable 自身 tint 或
+            //   ColorFilter），上面会读 0，探针失效就会去抄状态栏的颜色。
+            //   排在 ImageTintList 之后 ⇒ **8.5 完全走不到这里**（那里 csl 必非空且有值）。
+            //   这两个 getter 在本工程 compileSdk stub 里不可见，故走反射取。
+            final android.graphics.drawable.Drawable dr = iv.getDrawable();
+            if (dr != null) {
+                final int dt = intGetter(dr, "getTint");
+                if (dt != 0) {
+                    return dt;
+                }
+            }
+            final int cc = intGetter(iv.getColorFilter(), "getColor");
+            if (cc != 0) {
+                return cc;
             }
         }
         if (v instanceof android.widget.TextView) {

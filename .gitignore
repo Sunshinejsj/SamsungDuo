@@ -90,3 +90,6 @@ Desktop.ini
 /1003-todo.md
 /.zcodeignore
 /preview-repo.html
+
+# 本地反汇编临时目录
+.tmp_*/
