@@ -102,10 +102,22 @@ public final class TrioSettings {
     public int lowThreshold;
     /** ★ v77：省电模式是否参与电量着色，默认开（MIUI 语义），见 Prefs#KEY_POWER_SAVE_COLOR。 */
     public boolean powerSaveColor;
-    /** ★ v82：充电时闪电与电量同时显示（缺口左闪电、右电量，上下边对齐）。 */
-    public boolean chargeWithValue;
-    /** ★ v82：「闪电+电量」这一对的字号（30–36，空间不足时自动缩小）。 */
+    /**
+     * ★ v104：充电同显三选项 —— {@link Prefs#CHARGE_PAIR_OFF} /
+     * {@link Prefs#CHARGE_PAIR_GAP}（圈上）/ {@link Prefs#CHARGE_PAIR_CENTRE}（圈内）。
+     *
+     * <p>v82 的 {@code chargeWithValue} 布尔值已并入此项：老设置里开着的一次性
+     * 迁移成"圈上"，见 {@link #readPairMode}。
+     */
+    public int chargePairMode;
+    /** ★ v104：信号要不要也去缺口跟闪电并排（默认关）。 */
+    public boolean chargeSignalAlso;
+    /** ★ v82：「闪电+电量」这一对的字号（30–35，空间不足时自动缩小）。 */
     public int chargeValueSize;
+    /** ★ v104：「闪电+信号」这一对的信号大小（30–35，与电量字号同一档位）。 */
+    public int chargeSignalSize;
+    /** ★ v104：组合图标里 5GA 的 "A" 相对主字号的百分比（50–100）。 */
+    public int chargeSuffixAScale;
 
     public int ringStroke;
     public int arcStroke;
@@ -223,8 +235,11 @@ public final class TrioSettings {
         s.lowOnLight = Prefs.DEF_COLOR_LOW_ON_LIGHT;
         s.lowThreshold = Prefs.DEF_LOW_THRESHOLD;
         s.powerSaveColor = Prefs.DEF_POWER_SAVE_COLOR;
-        s.chargeWithValue = Prefs.DEF_CHARGE_WITH_VALUE;
+        s.chargePairMode = Prefs.DEF_CHARGE_PAIR_MODE;
+        s.chargeSignalAlso = Prefs.DEF_CHARGE_SIGNAL_ALSO;
         s.chargeValueSize = Prefs.DEF_CHARGE_VALUE_SIZE;
+        s.chargeSignalSize = Prefs.DEF_CHARGE_SIGNAL_SIZE;
+        s.chargeSuffixAScale = Prefs.DEF_CHARGE_SUFFIX_A_SCALE;
 
         s.ringStroke = Prefs.DEF_RING_STROKE;
         s.arcStroke = Prefs.DEF_ARC_STROKE;
@@ -307,11 +322,19 @@ public final class TrioSettings {
                 p.getInt(Prefs.KEY_LOW_THRESHOLD, Prefs.DEF_LOW_THRESHOLD),
                 Prefs.MIN_LOW_THRESHOLD, Prefs.MAX_LOW_THRESHOLD);
         s.powerSaveColor = p.getBoolean(Prefs.KEY_POWER_SAVE_COLOR, Prefs.DEF_POWER_SAVE_COLOR);
-        s.chargeWithValue = p.getBoolean(
-                Prefs.KEY_CHARGE_WITH_VALUE, Prefs.DEF_CHARGE_WITH_VALUE);
+        s.chargePairMode = readPairMode(p, Prefs.KEY_CHARGE_PAIR_MODE,
+                Prefs.KEY_CHARGE_WITH_VALUE, true);
+        s.chargeSignalAlso = p.getBoolean(
+                Prefs.KEY_CHARGE_SIGNAL_ALSO, Prefs.DEF_CHARGE_SIGNAL_ALSO);
         s.chargeValueSize = Prefs.clamp(
                 p.getInt(Prefs.KEY_CHARGE_VALUE_SIZE, Prefs.DEF_CHARGE_VALUE_SIZE),
                 Prefs.MIN_CHARGE_VALUE_SIZE, Prefs.MAX_CHARGE_VALUE_SIZE);
+        s.chargeSignalSize = Prefs.clamp(
+                p.getInt(Prefs.KEY_CHARGE_SIGNAL_SIZE, Prefs.DEF_CHARGE_SIGNAL_SIZE),
+                Prefs.MIN_CHARGE_SIGNAL_SIZE, Prefs.MAX_CHARGE_SIGNAL_SIZE);
+        s.chargeSuffixAScale = Prefs.clamp(
+                p.getInt(Prefs.KEY_CHARGE_SUFFIX_A_SCALE, Prefs.DEF_CHARGE_SUFFIX_A_SCALE),
+                Prefs.MIN_CHARGE_SUFFIX_A_SCALE, Prefs.MAX_CHARGE_SUFFIX_A_SCALE);
 
         s.ringStroke = Prefs.clamp(
                 p.getInt(Prefs.KEY_RING_STROKE, Prefs.DEF_RING_STROKE),
@@ -496,8 +519,11 @@ public final class TrioSettings {
         s.lowOnLight = lowOnLight;
         s.lowThreshold = lowThreshold;
         s.powerSaveColor = powerSaveColor;
-        s.chargeWithValue = chargeWithValue;
+        s.chargePairMode = chargePairMode;
+        s.chargeSignalAlso = chargeSignalAlso;
         s.chargeValueSize = chargeValueSize;
+        s.chargeSignalSize = chargeSignalSize;
+        s.chargeSuffixAScale = chargeSuffixAScale;
 
         s.ringStroke = ringStroke;
         s.arcStroke = arcStroke;
@@ -568,8 +594,11 @@ public final class TrioSettings {
             case Prefs.KEY_COLOR_LOW_ON_LIGHT: lowOnLight = src.lowOnLight; return true;
             case Prefs.KEY_LOW_THRESHOLD: lowThreshold = src.lowThreshold; return true;
             case Prefs.KEY_POWER_SAVE_COLOR: powerSaveColor = src.powerSaveColor; return true;
-            case Prefs.KEY_CHARGE_WITH_VALUE: chargeWithValue = src.chargeWithValue; return true;
+            case Prefs.KEY_CHARGE_PAIR_MODE: chargePairMode = src.chargePairMode; return true;
+            case Prefs.KEY_CHARGE_SIGNAL_ALSO: chargeSignalAlso = src.chargeSignalAlso; return true;
             case Prefs.KEY_CHARGE_VALUE_SIZE: chargeValueSize = src.chargeValueSize; return true;
+            case Prefs.KEY_CHARGE_SIGNAL_SIZE: chargeSignalSize = src.chargeSignalSize; return true;
+            case Prefs.KEY_CHARGE_SUFFIX_A_SCALE: chargeSuffixAScale = src.chargeSuffixAScale; return true;
             case Prefs.KEY_RING_STROKE: ringStroke = src.ringStroke; return true;
             case Prefs.KEY_ARC_STROKE: arcStroke = src.arcStroke; return true;
             case Prefs.KEY_VALUE_SIZE: valueSize = src.valueSize; return true;
@@ -641,11 +670,19 @@ public final class TrioSettings {
                 bundle.getInt(Prefs.KEY_LOW_THRESHOLD, Prefs.DEF_LOW_THRESHOLD),
                 Prefs.MIN_LOW_THRESHOLD, Prefs.MAX_LOW_THRESHOLD);
         s.powerSaveColor = bundle.getBoolean(Prefs.KEY_POWER_SAVE_COLOR, Prefs.DEF_POWER_SAVE_COLOR);
-        s.chargeWithValue = bundle.getBoolean(
-                Prefs.KEY_CHARGE_WITH_VALUE, Prefs.DEF_CHARGE_WITH_VALUE);
+        s.chargePairMode = readPairMode(bundle, Prefs.KEY_CHARGE_PAIR_MODE,
+                Prefs.KEY_CHARGE_WITH_VALUE, true);
+        s.chargeSignalAlso = bundle.getBoolean(
+                Prefs.KEY_CHARGE_SIGNAL_ALSO, Prefs.DEF_CHARGE_SIGNAL_ALSO);
         s.chargeValueSize = Prefs.clamp(
                 bundle.getInt(Prefs.KEY_CHARGE_VALUE_SIZE, Prefs.DEF_CHARGE_VALUE_SIZE),
                 Prefs.MIN_CHARGE_VALUE_SIZE, Prefs.MAX_CHARGE_VALUE_SIZE);
+        s.chargeSignalSize = Prefs.clamp(
+                bundle.getInt(Prefs.KEY_CHARGE_SIGNAL_SIZE, Prefs.DEF_CHARGE_SIGNAL_SIZE),
+                Prefs.MIN_CHARGE_SIGNAL_SIZE, Prefs.MAX_CHARGE_SIGNAL_SIZE);
+        s.chargeSuffixAScale = Prefs.clamp(
+                bundle.getInt(Prefs.KEY_CHARGE_SUFFIX_A_SCALE, Prefs.DEF_CHARGE_SUFFIX_A_SCALE),
+                Prefs.MIN_CHARGE_SUFFIX_A_SCALE, Prefs.MAX_CHARGE_SUFFIX_A_SCALE);
 
         s.ringStroke = Prefs.clamp(
                 bundle.getInt(Prefs.KEY_RING_STROKE, Prefs.DEF_RING_STROKE),
@@ -746,6 +783,40 @@ public final class TrioSettings {
     }
 
     /**
+     * ★ v104：读一个「充电同显」三选项，并顺手把 v82 的布尔键迁移过来。
+     *
+     * <p>新键缺失（老用户第一次升上来）时看旧布尔键：开着 = "圈上"，关着 = 关闭。
+     * 旧键也不存在就走默认值。两个容器各一份重载，因为它们没有共同的取值接口。
+     *
+     * @param legacyKey 要迁移的旧布尔键；{@code null} 表示这一项没有旧键
+     */
+    private static int readPairMode(SharedPreferences p, String key, String legacyKey,
+                                    boolean hasLegacy) {
+        final int raw = p.getInt(key, -1);
+        if (raw >= 0) {
+            return Prefs.clamp(raw, Prefs.CHARGE_PAIR_OFF, Prefs.CHARGE_PAIR_CENTRE);
+        }
+        if (hasLegacy && legacyKey != null
+                && p.getBoolean(legacyKey, Prefs.DEF_CHARGE_WITH_VALUE)) {
+            return Prefs.CHARGE_PAIR_GAP;
+        }
+        return Prefs.CHARGE_PAIR_OFF;
+    }
+
+    /** @see #readPairMode(SharedPreferences, String, String, boolean) */
+    private static int readPairMode(Bundle b, String key, String legacyKey, boolean hasLegacy) {
+        final int raw = b.getInt(key, -1);
+        if (raw >= 0) {
+            return Prefs.clamp(raw, Prefs.CHARGE_PAIR_OFF, Prefs.CHARGE_PAIR_CENTRE);
+        }
+        if (hasLegacy && legacyKey != null
+                && b.getBoolean(legacyKey, Prefs.DEF_CHARGE_WITH_VALUE)) {
+            return Prefs.CHARGE_PAIR_GAP;
+        }
+        return Prefs.CHARGE_PAIR_OFF;
+    }
+
+    /**
      * The inverse of {@link #fromBundle(Bundle)}, using the same pref key names
      * so the two sides cannot drift apart. The settings app sends this to the
      * hooked process after every write.
@@ -775,8 +846,11 @@ public final class TrioSettings {
         b.putInt(Prefs.KEY_COLOR_LOW_ON_LIGHT, lowOnLight);
         b.putInt(Prefs.KEY_LOW_THRESHOLD, lowThreshold);
         b.putBoolean(Prefs.KEY_POWER_SAVE_COLOR, powerSaveColor);
-        b.putBoolean(Prefs.KEY_CHARGE_WITH_VALUE, chargeWithValue);
+        b.putInt(Prefs.KEY_CHARGE_PAIR_MODE, chargePairMode);
+        b.putBoolean(Prefs.KEY_CHARGE_SIGNAL_ALSO, chargeSignalAlso);
         b.putInt(Prefs.KEY_CHARGE_VALUE_SIZE, chargeValueSize);
+        b.putInt(Prefs.KEY_CHARGE_SIGNAL_SIZE, chargeSignalSize);
+        b.putInt(Prefs.KEY_CHARGE_SUFFIX_A_SCALE, chargeSuffixAScale);
 
         b.putInt(Prefs.KEY_RING_STROKE, ringStroke);
         b.putInt(Prefs.KEY_ARC_STROKE, arcStroke);
@@ -853,8 +927,11 @@ public final class TrioSettings {
                 && lowOnLight == s.lowOnLight
                 && lowThreshold == s.lowThreshold
                 && powerSaveColor == s.powerSaveColor
-                && chargeWithValue == s.chargeWithValue
+                && chargePairMode == s.chargePairMode
+                && chargeSignalAlso == s.chargeSignalAlso
                 && chargeValueSize == s.chargeValueSize
+                && chargeSignalSize == s.chargeSignalSize
+                && chargeSuffixAScale == s.chargeSuffixAScale
                 && ringStroke == s.ringStroke
                 && arcStroke == s.arcStroke
                 && valueSize == s.valueSize

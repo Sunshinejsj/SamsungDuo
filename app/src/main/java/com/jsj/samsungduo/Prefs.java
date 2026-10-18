@@ -520,24 +520,58 @@ public final class Prefs {
      * 不想被染色的可以关掉。
      */
     public static final String KEY_POWER_SAVE_COLOR = "power_save_color";
-    /** ★ v82：充电时同时显示闪电与电量（默认关）。 */
-    public static final String KEY_CHARGE_WITH_VALUE = "charge_with_value";
-    /** ★ v82：「闪电+电量」这一对的字号（30–36）。 */
-    public static final String KEY_CHARGE_VALUE_SIZE = "charge_value_size";
-    public static final boolean DEF_POWER_SAVE_COLOR = true;
     /**
-     * ★ v82：充电时「闪电 + 电量」同时显示，默认<b>关</b>。
-     *
-     * <p>要它的原因：网络类型在环内时，充电帧的缺口被闪电占着、环中心被类型占着，
-     * 电量数字按现有规则整个不画（{@code valueInGap = hasValue && !valueInCentre && !bolt}）
-     * —— 用户实测"充电时看不到当前电量"。
-     *
-     * <p>开着时：缺口左侧画闪电、右侧画电量数字，两者<b>上下边严格对齐</b>
-     * （闪电高度 = 数字 cap 高度 = 0.71×字号），5G 仍留在环中心不受影响。
+     * @deprecated v82 的布尔键，只被一次性迁移读取，见 {@link #KEY_CHARGE_PAIR_MODE}。
      */
+    @Deprecated
+    public static final String KEY_CHARGE_WITH_VALUE = "charge_with_value";
+    /**
+     * ★ v104：充电同显三选项 —— 0 隐藏 / 1 圈上 / 2 圈内（默认 0）。
+     *
+     * <p>取代 v82 的 {@link #KEY_CHARGE_WITH_VALUE} 布尔开关：那个开关只有"缺口里
+     * 闪电+电量"一种画法，没有"圈内"这一档。老设置开着的一次性迁移成"圈上"
+     * （见 {@code TrioSettings#readPairMode}）。
+     *
+     * <p><b>只管电量那一对</b>：选哪个槽，闪电就去哪个槽，电量跟着并排（上下边对齐）。
+     */
+    public static final String KEY_CHARGE_PAIR_MODE = "charge_pair_mode";
+    /**
+     * ★ v104：充电时<b>信号</b>要不要也去缺口跟闪电并排（＝ L29 的样子）。
+     *
+     * <p>默认<b>关</b>：关着时缺口归电量，三选项说了算（v82 的行为）。
+     * 开着时缺口归信号 —— 「电量数字居中」打开的用户最需要它（否则充电时信号被
+     * 闪电挤掉，报告的正是这个 BUG）。
+     *
+     * <p>只在 {@link #KEY_CHARGE_PAIR_MODE} 不是"隐藏"、且「电量数字居中」开着时
+     * 才可用：居中关着时信号本来就在环内正常显示，这一排也不存在。
+     */
+    public static final String KEY_CHARGE_SIGNAL_ALSO = "charge_signal_also";
+    /** ★ v82：「闪电+电量」这一对的字号（30–35）。 */
+    public static final String KEY_CHARGE_VALUE_SIZE = "charge_value_size";
+    /** ★ v104：「闪电+信号」这一对的信号大小（30–35，与电量字号同一档位）。 */
+    public static final String KEY_CHARGE_SIGNAL_SIZE = "charge_signal_size";
+    /** ★ v104：组合图标里 5GA 的 "A" 相对主字号的百分比（50–100）。 */
+    public static final String KEY_CHARGE_SUFFIX_A_SCALE = "charge_suffix_a_scale";
+    public static final boolean DEF_POWER_SAVE_COLOR = true;
+    /** 充电同显：隐藏（保持正式版的样子 —— 充电时只有闪电，信号不显示）。 */
+    public static final int CHARGE_PAIR_OFF = 0;
+    /** 充电同显：闪电去 12 点缺口，与缺口里那个并排。 */
+    public static final int CHARGE_PAIR_GAP = 1;
+    /** 充电同显：闪电去环内（环心那一行），与环内那个并排。 */
+    public static final int CHARGE_PAIR_CENTRE = 2;
+    /** @deprecated 只被迁移读取。 */
+    @Deprecated
     public static final boolean DEF_CHARGE_WITH_VALUE = false;
-    /** ★ v82：上面那对"闪电+电量"的字号，默认 30（缺口装得下且两侧有余量）。 */
+    /** ★ v104：默认隐藏，与 v82 的默认一致（老用户开着会自动迁移成"圈上"）。 */
+    public static final int DEF_CHARGE_PAIR_MODE = CHARGE_PAIR_OFF;
+    /** ★ v104：默认关 —— 缺口留给电量那一对（v82 的行为）。 */
+    public static final boolean DEF_CHARGE_SIGNAL_ALSO = false;
+    /** ★ v82：那对"闪电+电量"的字号，默认 30（缺口装得下且两侧有余量）。 */
     public static final int DEF_CHARGE_VALUE_SIZE = 30;
+    /** ★ v104：那对"闪电+信号"的信号大小，默认 30，与电量字号对齐。 */
+    public static final int DEF_CHARGE_SIGNAL_SIZE = 30;
+    /** ★ v104：组合图标里 "A" 的大小，默认 65%，与环内 5GA 的 A 一致。 */
+    public static final int DEF_CHARGE_SUFFIX_A_SCALE = 65;
 
     public static final int DEF_RING_STROKE = 14;
     /** ★ v76：WiFi 弧线粗细默认值按用户要求由 12 改为 7（范围 3–16 不变）。 */
@@ -750,15 +784,28 @@ public final class Prefs {
     public static final int MIN_GLYPH_SHIFT = -16;
     public static final int MAX_GLYPH_SHIFT = 16;
     /**
-     * ★ v82 「闪电+电量」字号范围：30–36（用户指定）。
+     * ★ v82/v104 两个组合图标的大小范围：30–35（用户指定，10.2 起两个滑块统一）。
      *
-     * <p>上界 36 是用户要的上限；但缺口净宽只有约 63 设计单位，"闪电 + 两位数字"
-     * 在 34 以上就装不满了 —— 所以渲染层仍会按剩余净宽自动缩小（见
-     * {@code TrioRenderer#fitSize}），字号设到 35/36 时会略小于设定值，
-     * 而不是把数字压到弧线的圆头上去。
+     * <p>数值就是"配对字号"：配对高度 = 字号 × 0.71（cap 高度），闪电、wifi 图标、
+     * 电量/信号文字都按同一个高度铺，于是上下边天然对齐（用户定的规则）。
+     *
+     * <p>上界 35 是用户要的上限；但缺口净宽只有约 63 设计单位，"闪电 + 两位数字"
+     * 或"闪电 + 5GA"在这档位以上就装不满了 —— 所以渲染层仍会按剩余净宽自动缩小，
+     * 而不是把内容压到弧线的圆头上去。
      */
     public static final int MIN_CHARGE_VALUE_SIZE = 30;
-    public static final int MAX_CHARGE_VALUE_SIZE = 36;
+    public static final int MAX_CHARGE_VALUE_SIZE = 35;
+    /** ★ v104：「闪电+信号」那一对的范围，与电量字号同一档位。 */
+    public static final int MIN_CHARGE_SIGNAL_SIZE = 30;
+    public static final int MAX_CHARGE_SIGNAL_SIZE = 35;
+    /**
+     * ★ v104：组合图标里 5GA 的 "A" 相对主字号的百分比，50–100。
+     *
+     * <p>与环内 {@link #MIN_TYPE_SUFFIX_SCALE} 同一套区间，只是<b>独立成一项</b>：
+     * 组合图标里的 A 和环内 5GA 的 A 是两个场景，用户要能分别调。
+     */
+    public static final int MIN_CHARGE_SUFFIX_A_SCALE = 50;
+    public static final int MAX_CHARGE_SUFFIX_A_SCALE = 100;
     /**
      * v73 读数整体尺寸范围（%）：60–150。
      * 150 之上单项读数会高过旁边的图标；60 之下在状态栏尺寸上难以卒读。

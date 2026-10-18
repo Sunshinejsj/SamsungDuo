@@ -116,11 +116,17 @@ class SettingsRepository(context: Context) {
 
     fun setLowThreshold(value: Int) = writeInt(Prefs.KEY_LOW_THRESHOLD, value)
     fun setPowerSaveColor(value: Boolean) = writeBoolean(Prefs.KEY_POWER_SAVE_COLOR, value)
-    /** ★ v82：充电时闪电与电量同时显示（默认关）。 */
-    fun setChargeWithValue(value: Boolean) =
-        writeBoolean(Prefs.KEY_CHARGE_WITH_VALUE, value)
-    /** ★ v82：「闪电+电量」这一对的字号（30–36，空间不足时自动缩小）。 */
+    /** ★ v104：充电同显三选项（0 隐藏 / 1 圈上 / 2 圈内），只管电量那一对。 */
+    fun setChargePairMode(value: Int) = writeInt(Prefs.KEY_CHARGE_PAIR_MODE, value)
+    /** ★ v104：信号要不要也去缺口跟闪电并排（默认关）。 */
+    fun setChargeSignalAlso(value: Boolean) =
+        writeBoolean(Prefs.KEY_CHARGE_SIGNAL_ALSO, value)
+    /** ★ v82：「闪电+电量」这一对的字号（30–35，空间不足时自动缩小）。 */
     fun setChargeValueSize(value: Int) = writeInt(Prefs.KEY_CHARGE_VALUE_SIZE, value)
+    /** ★ v104：「闪电+信号」这一对的信号大小（30–35，空间不足时自动缩小）。 */
+    fun setChargeSignalSize(value: Int) = writeInt(Prefs.KEY_CHARGE_SIGNAL_SIZE, value)
+    /** ★ v104：组合图标里 5GA 的 "A" 相对主字号的百分比（50–100）。 */
+    fun setChargeSuffixAScale(value: Int) = writeInt(Prefs.KEY_CHARGE_SUFFIX_A_SCALE, value)
     fun setRingStroke(value: Int) = writeInt(Prefs.KEY_RING_STROKE, value)
     fun setArcStroke(value: Int) = writeInt(Prefs.KEY_ARC_STROKE, value)
     fun setValueSize(value: Int) = writeInt(Prefs.KEY_VALUE_SIZE, value)
@@ -190,8 +196,11 @@ class SettingsRepository(context: Context) {
             prefs.putInt(Prefs.KEY_COLOR_LOW_ON_LIGHT, snapshot.lowOnLight)
             prefs.putInt(Prefs.KEY_LOW_THRESHOLD, snapshot.lowThreshold)
             prefs.putBoolean(Prefs.KEY_POWER_SAVE_COLOR, snapshot.powerSaveColor)
-            prefs.putBoolean(Prefs.KEY_CHARGE_WITH_VALUE, snapshot.chargeWithValue)
+            prefs.putInt(Prefs.KEY_CHARGE_PAIR_MODE, snapshot.chargePairMode)
+            prefs.putBoolean(Prefs.KEY_CHARGE_SIGNAL_ALSO, snapshot.chargeSignalAlso)
             prefs.putInt(Prefs.KEY_CHARGE_VALUE_SIZE, snapshot.chargeValueSize)
+            prefs.putInt(Prefs.KEY_CHARGE_SIGNAL_SIZE, snapshot.chargeSignalSize)
+            prefs.putInt(Prefs.KEY_CHARGE_SUFFIX_A_SCALE, snapshot.chargeSuffixAScale)
 
             prefs.putInt(Prefs.KEY_RING_STROKE, snapshot.ringStroke)
             prefs.putInt(Prefs.KEY_ARC_STROKE, snapshot.arcStroke)

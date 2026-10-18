@@ -29,8 +29,8 @@ android {
         applicationId = "com.jsj.samsungduo"
         minSdk = 29
         targetSdk = 36
-        versionCode = tagVersionCode ?: 101
-        versionName = tagVersionName ?: "10.1"
+        versionCode = tagVersionCode ?: 102
+        versionName = tagVersionName ?: "10.2"
     }
 
     signingConfigs {
@@ -90,7 +90,7 @@ android {
 androidComponents {
     onVariants(selector().all()) { variant ->
         val vn = (findProperty("samsungDuoVersionName") as String?)?.takeIf { it.isNotBlank() }
-            ?: tagVersionName ?: "10.1"
+            ?: tagVersionName ?: "10.2"
         variant.outputs.forEach { output ->
             output.outputFileName.set("SamsungDuo-$vn.apk")
         }

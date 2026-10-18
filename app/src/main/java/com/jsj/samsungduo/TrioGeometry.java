@@ -316,6 +316,24 @@ final class TrioGeometry {
     /** Topmost ink of the outer arc, at its apex. */
     static final float W_TOP = W1_CY - W1_R;
     /**
+     * ★ v104：圆点的最低点 —— wifi 图标参考墨迹的<b>下边</b>（与
+     * {@code TrioRenderer#buildWifiDot} 的最后一段贝塞尔终点一致）。
+     */
+    static final float WIFI_INK_BOTTOM = 80.95f;
+    /**
+     * ★ v104：wifi 图标在 1.0 倍时上下边的距离（外弧顶端到圆点底端）。
+     *
+     * <p>组合图标要按"配对高度"缩放 wifi，缺了这个就没法把弧线和数字/闪电
+     * 的上下边对齐 —— 只有 {@link #GAP_WIFI_SCALE} 那种固定倍数是不够的。
+     */
+    static float wifiInkH(float stroke) {
+        return WIFI_INK_BOTTOM - (W_TOP - stroke * 0.5f);
+    }
+    /** ★ v104：wifi 图标在 1.0 倍时的宽度（外弧定宽，圆点比它窄）。 */
+    static float wifiInkW(float stroke) {
+        return 2f * (W1_R + stroke * 0.5f);
+    }
+    /**
      * Scale of the Wi-Fi group when the percentage is centred
      * ({@code Prefs.KEY_VALUE_CENTRED}) and the group is moved into the 12
      * o'clock notch. The notch is 69.6 units of chord at the mouth and the group

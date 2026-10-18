@@ -1040,6 +1040,44 @@ private fun LazyListScope.geometryTab(
                 enabled = a.glyph,
                 onValueChange = { v -> update { it.setGlyphScale(v) } },
             )
+            // ★ v104：两条间距项并进「三合一图标尺寸」这一张卡（用户要求）——
+            //   它们调的都是这一组在状态栏行里的横向位置，跟整体尺寸是同一个
+            //   话题，分开成一组反而要在两张卡之间来回找。
+            //
+            //   负值正是这个控件存在的意义：0 时圆环与左侧原生图标之间已经没有
+            //   布局间距了，剩下的那点距离是原生图标内部的透明留白，margin 碰不到，
+            //   只有负偏移能啃进去；啃多少安全因图标集而异，所以给滑块而不是常量。
+            //   每帧读取，拖着就能看到动。
+            IntSlider(
+                value = settings.glyphLeftOffset,
+                min = Prefs.MIN_GLYPH_LEFT_OFFSET,
+                max = Prefs.MAX_GLYPH_LEFT_OFFSET,
+                title = stringResource(R.string.glyph_left_offset_title),
+                summary = stringResource(R.string.glyph_left_offset_summary),
+                valueTextSuffix = "dp",
+                enabled = a.glyph,
+                onValueChange = { v -> update { it.setGlyphLeftOffset(v) } },
+                // Stored in half-dp; show the dp the summary talks about.
+                valueFormatter = { v ->
+                    String.format(java.util.Locale.US, "%.1f", v / 2f)
+                },
+            )
+            // ★ v82：整组左右平移。与上面那条分工明确 —— 上面只改"与左侧原生
+            //   图标的间距"，这条动的是整组位置：margin（把原生图标推走/放回）
+            //   与 translationX（平移整组）两条路共用同一个量，组内相对距离不变。
+            //   实机几何：我们这一组是状态栏那一行最后一组子 View，行的右缘钉死在
+            //   屏幕右缘（geometry dump 里我们的 View 的 r 恒等于行的宽）——
+            //   所以只改 margin 动的会是原生图标、只改 translation 会压到它们上面。
+            IntSlider(
+                value = settings.glyphShift,
+                min = Prefs.MIN_GLYPH_SHIFT,
+                max = Prefs.MAX_GLYPH_SHIFT,
+                title = stringResource(R.string.glyph_shift_title),
+                summary = stringResource(R.string.glyph_shift_summary),
+                valueTextSuffix = "dp",
+                enabled = a.glyph,
+                onValueChange = { v -> update { it.setGlyphShift(v) } },
+            )
         }
     }
     item { SectionTitle(stringResource(R.string.group_stroke)) }
@@ -1228,57 +1266,6 @@ private fun LazyListScope.geometryTab(
                     onValueChange = { v -> update { it.setTypeWeight(v) } },
                 )
             }
-        }
-    }
-    // The out-of-ring reading gets its own card: it is a different element from
-    // the type label (which is why its two sliders were buried in the type card
-    // until now), it has a different gate - the stacked reading has to actually
-    // be drawn - and mixing the two groups made the user dig for the spacing
-    // row between type rows that do not affect it.
-    //
-    // The ring's own offset sits in a group ahead of it because it belongs to a
-    // different element again: it spaces the ring from the native row, whatever
-    // the out-of-ring reading is doing.
-    item { SectionTitle(stringResource(R.string.group_spacing)) }
-    item {
-        Card {
-            // Negative values are the whole point of this control: at 0 the ring
-            // already keeps no layout margin from the icon on its left, and the
-            // distance still visible is transparent padding inside the native
-            // icons, which no margin can touch. Only a negative offset can eat
-            // into it, and how much is safe varies by icon set - hence a slider
-            // rather than a constant. Read every frame, so it moves as it is
-            // dragged.
-            IntSlider(
-                value = settings.glyphLeftOffset,
-                min = Prefs.MIN_GLYPH_LEFT_OFFSET,
-                max = Prefs.MAX_GLYPH_LEFT_OFFSET,
-                title = stringResource(R.string.glyph_left_offset_title),
-                summary = stringResource(R.string.glyph_left_offset_summary),
-                valueTextSuffix = "dp",
-                enabled = a.glyph,
-                onValueChange = { v -> update { it.setGlyphLeftOffset(v) } },
-                // Stored in half-dp; show the dp the summary talks about.
-                valueFormatter = { v ->
-                    String.format(java.util.Locale.US, "%.1f", v / 2f)
-                },
-            )
-            // ★ v82：整组左右平移。与上面那条分工明确 —— 上面只改"与左侧原生
-            //   图标的间距"，这条动的是整组位置：margin（把原生图标推走/放回）
-            //   与 translationX（平移整组）两条路共用同一个量，组内相对距离不变。
-            //   实机几何：我们这一组是状态栏那一行最后一组子 View，行的右缘钉死在
-            //   屏幕右缘（geometry dump 里我们的 View 的 r 恒等于行的宽）——
-            //   所以只改 margin 动的会是原生图标、只改 translation 会压到它们上面。
-            IntSlider(
-                value = settings.glyphShift,
-                min = Prefs.MIN_GLYPH_SHIFT,
-                max = Prefs.MAX_GLYPH_SHIFT,
-                title = stringResource(R.string.glyph_shift_title),
-                summary = stringResource(R.string.glyph_shift_summary),
-                valueTextSuffix = "dp",
-                enabled = a.glyph,
-                onValueChange = { v -> update { it.setGlyphShift(v) } },
-            )
         }
     }
     // Burn-in protection gets its own group: it is not a spacing control (it
@@ -1476,6 +1463,46 @@ private fun LazyListScope.geometryTab(
             )
         }
     }
+    // ★ v104：充电组合图标的三个大小滑块，按用户要求放在「尺寸」页**最下面** ——
+    //   它们是"充电那一帧里组合图标长多大"，属于最细的末梢调整，排在页面最后
+    //   不挡住整体尺寸、描边、字号这些更常用的项。
+    //
+    //   每个滑块跟着自己那个开关走：电量大小只在「电量」开关不是"关闭"时可用，
+    //   信号两个只在「信号」开关不是"关闭"时可用 —— 关着的时候根本没有组合
+    //   图标，调了也看不到。
+    item { SectionTitle(stringResource(R.string.group_charge_pair)) }
+    item {
+        Card {
+            IntSlider(
+                value = settings.chargeValueSize,
+                min = Prefs.MIN_CHARGE_VALUE_SIZE,
+                max = Prefs.MAX_CHARGE_VALUE_SIZE,
+                title = stringResource(R.string.charge_value_size_title),
+                summary = stringResource(R.string.charge_value_size_summary),
+                enabled = a.glyph && a.chargePairWanted,
+                onValueChange = { v -> update { it.setChargeValueSize(v) } },
+            )
+            IntSlider(
+                value = settings.chargeSignalSize,
+                min = Prefs.MIN_CHARGE_SIGNAL_SIZE,
+                max = Prefs.MAX_CHARGE_SIGNAL_SIZE,
+                title = stringResource(R.string.charge_signal_size_title),
+                summary = stringResource(R.string.charge_signal_size_summary),
+                enabled = a.glyph && a.chargePairWanted && a.chargeSignalAlso,
+                onValueChange = { v -> update { it.setChargeSignalSize(v) } },
+            )
+            IntSlider(
+                value = settings.chargeSuffixAScale,
+                min = Prefs.MIN_CHARGE_SUFFIX_A_SCALE,
+                max = Prefs.MAX_CHARGE_SUFFIX_A_SCALE,
+                title = stringResource(R.string.charge_suffix_a_title),
+                summary = stringResource(R.string.charge_suffix_a_summary),
+                valueTextSuffix = "%",
+                enabled = a.glyph && a.chargePairWanted && a.chargeSignalAlso,
+                onValueChange = { v -> update { it.setChargeSuffixAScale(v) } },
+            )
+        }
+    }
 }
 
 /**
@@ -1530,25 +1557,37 @@ private fun LazyListScope.colorsTab(
                     enabled = a.glyph && a.roleColors,
                 )
             }
-            // ★ v82：充电时「闪电 + 电量」同显（默认关）。放在颜色这一组，
-            //   与省电染色并列 —— 它跟"颜色怎么定"无关、跟"充电时长什么样"有关，
-            //   但用户明确要求放这儿，就放这儿。
-            SwitchPreference(
-                checked = settings.chargeWithValue,
-                onCheckedChange = { value -> update { it.setChargeWithValue(value) } },
-                title = stringResource(R.string.charge_with_value_title),
-                summary = stringResource(R.string.charge_with_value_summary),
+            // ★ v104：充电同显 —— **两个**控件。
+            //   放在颜色这一组，与省电染色并列 —— 它跟"颜色怎么定"无关、跟
+            //   "充电时长什么样"有关，但 v82 时用户就明确要求放这儿，就继续放这儿。
+            //   三个大小滑块已按用户要求移到「尺寸」页最下面。
+            //
+            //   · 三选项（隐藏 / 圈上 / 圈内）**只管电量那一对**。
+            //   · 下面那个开关**只管信号**：开启时信号也去缺口跟闪电并排。
+            val chargePairModes = listOf(
+                stringResource(R.string.charge_pair_off),
+                stringResource(R.string.charge_pair_gap),
+                stringResource(R.string.charge_pair_centre),
+            )
+            OverlayDropdownPreference(
+                items = chargePairModes,
+                selectedIndex = settings.chargePairMode,
+                title = stringResource(R.string.charge_pair_title),
+                summary = stringResource(R.string.charge_pair_summary),
                 insideMargin = SettingsItemMargin,
                 enabled = a.glyph,
+                onSelectedIndexChange = { index -> update { repo -> repo.setChargePairMode(index) } },
             )
-            IntSlider(
-                value = settings.chargeValueSize,
-                min = Prefs.MIN_CHARGE_VALUE_SIZE,
-                max = Prefs.MAX_CHARGE_VALUE_SIZE,
-                title = stringResource(R.string.charge_value_size_title),
-                summary = stringResource(R.string.charge_value_size_summary),
-                enabled = a.glyph && settings.chargeWithValue,
-                onValueChange = { v -> update { it.setChargeValueSize(v) } },
+            // 信号开关只有「电量数字居中」开着时才有意义：那时信号被挤到缺口，
+            // 充电时看不到它（用户报的 BUG）；居中关着时信号本来就在环内正常显示，
+            // 所以直接灰掉 —— 那一档就是正式版的样子。
+            SwitchPreference(
+                checked = settings.chargeSignalAlso,
+                onCheckedChange = { value -> update { it.setChargeSignalAlso(value) } },
+                title = stringResource(R.string.charge_signal_title),
+                summary = stringResource(R.string.charge_signal_summary),
+                insideMargin = SettingsItemMargin,
+                enabled = a.glyph && a.centreValue,
             )
             RoleColor.entries.forEach { role ->
                 TooltipBox(text = roleGate.orEmpty(), enabled = roleGate != null) {

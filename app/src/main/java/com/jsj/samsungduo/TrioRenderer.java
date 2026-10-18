@@ -203,45 +203,51 @@ final class TrioRenderer {
         // rounded stroke end straight into the outer dot. An empty mouth just
         // breaks the ring, so it closes instead.
         final boolean dualGap = r.dual;
-        // ★ v82：充电且「闪电+电量」同显时，缺口要加宽到能同时容纳两者
+        // ★ v104：组合图标落在缺口时，缺口要加宽到能同时容纳闪电和它的同伴
         //   （普通充电缺口只按一颗闪电定宽）。其余情况缺口一律不变。
-        final boolean chargePair = r.bolt && r.valueInGap && a.chargeWithValue;
+        final boolean boltInGap = r.bolt && !r.pairInCentre;
+        // 缺口加宽只在真的有同伴并排时才有意义 —— 只有一颗闪电却开着宽口，
+        // 看起来就是环上莫名其妙缺了一大块。
+        final boolean wideGap = r.pairInGap && (r.pairValue || r.pairWifi || r.pairType);
         final float gapStart = !r.gapUsed
                 ? TrioGeometry.GAP_NONE
                 : dualGap ? TrioGeometry.GAP_START_DUAL
-                : chargePair ? TrioGeometry.GAP_START_CHARGE_PAIR
-                : r.bolt ? TrioGeometry.GAP_START_CHARGE
+                : wideGap ? TrioGeometry.GAP_START_CHARGE_PAIR
+                : boltInGap ? TrioGeometry.GAP_START_CHARGE
                 : TrioGeometry.GAP_START_IDLE;
         final float gapEnd = !r.gapUsed
                 ? TrioGeometry.GAP_NONE
                 : dualGap ? TrioGeometry.GAP_END_DUAL
-                : chargePair ? TrioGeometry.GAP_END_CHARGE_PAIR
-                : r.bolt ? TrioGeometry.GAP_END_CHARGE
+                : wideGap ? TrioGeometry.GAP_END_CHARGE_PAIR
+                : boltInGap ? TrioGeometry.GAP_END_CHARGE
                 : TrioGeometry.GAP_END_IDLE;
 
         drawBattery(canvas, level, role, fg, a, gapStart, gapEnd);
         // When the percentage is centred the arcs only ever appear in the notch,
         // so a bolt that has taken the notch suppresses them outright rather than
         // letting them fall back onto the digits at the centre.
-        if (r.drawWifi) {
+        //
+        // ★ v104：组合图标里当同伴的那一件由 {@link #drawPair} 带出来，这里
+        //   让开，免得画两遍（原位一份、配对里一份）。
+        if (r.drawWifi && !r.pairWifi) {
             drawWifi(canvas, wifiLevel, fg, a, r.wifiInGap);
         }
         if (a.signalDots()) {
             drawLevelDots(canvas, mobileLevel, slotLevels, r.dual, fg, a);
         }
-        if (r.typeInCentre) {
+        if (r.typeInCentre && !r.pairType) {
             drawCentreType(canvas, mobileType, fg, a);
         }
-        if (r.typeInGap) {
+        if (r.typeInGap && !r.pairType) {
             drawGapType(canvas, mobileType, fg, a);
         }
-        if (r.bolt && !chargePair) {
+        if (r.pairInGap || r.pairInCentre) {
+            // ★ v104：左闪电、右同伴（电量数字 / wifi / 5GA），两者上下边对齐
+            drawPair(canvas, level, mobileType, wifiLevel, fg, a, quickCharging, r);
+        } else if (r.bolt) {
             drawBolt(canvas, quickCharging ? TrioGeometry.QUICK_CHARGE : fg);
         }
-        if (chargePair) {
-            // ★ v82：左闪电、右电量，两者上下边严格对齐（用户定的排法）
-            drawChargePair(canvas, level, fg, a, quickCharging);
-        } else if (r.drawValue) {
+        if (r.drawValue && !r.pairValue) {
             drawValue(canvas, level, fg, a, r.valueInCentre);
         }
     }
@@ -258,58 +264,118 @@ final class TrioRenderer {
      * {@link TrioGeometry#gapClearWidthAt}），"闪电 + 空隙 + 数字"超宽时先缩字号，
      * 绝不让数字压到弧线的圆头上。所以字号设到 35/36 时可能略小于设定值。
      */
-    private static void drawChargePair(Canvas c, int level, int fg,
-                                       TrioAppearance a, boolean quickCharging) {
-        final String text = String.valueOf(level);
+    private static void drawPair(Canvas c, int level, String mobileType, int wifiLevel,
+                                 int fg, TrioAppearance a, boolean quickCharging,
+                                 TrioAppearance.Ring r) {
+        final boolean inGap = r.pairInGap;
         final float stroke = a.ringStroke;
-        final float requested = a.chargeValueSize;
-        applyWeight(a.valueWeight);
-
-        // 先按请求字号量一遍，超宽就按比例缩（fitSize 同款思路）
-        final float top = TrioGeometry.GAP_TOP;
-        float size = requested;
-        float clear = TrioGeometry.gapClearWidthAt(
-                top + size * TrioGeometry.CAP_HEIGHT_RATIO,
-                TrioGeometry.GAP_START_CHARGE_PAIR, TrioGeometry.GAP_END_CHARGE_PAIR,
-                stroke);
-        float total = chargePairWidth(text, size);
-        if (total > clear && total > 0f) {
-            size = size * clear / total;
+        final float arcStroke = a.arcStroke;
+        // 两个开关各带一个同伴：电量用「电量字号」，信号用「信号大小」。
+        // 配对高度取两者较大的那个，矮的那个在这一行里垂直居中。
+        final float vs = r.pairValue ? a.chargeValueSize : 0f;
+        final float ss = (r.pairWifi || r.pairType) ? a.chargeSignalSize : 0f;
+        final float base = Math.max(vs, ss);
+        if (base <= 0f) {
+            // 没有同伴可配对（理论上到不了这里）：退回普通闪电
+            drawBolt(c, quickCharging ? TrioGeometry.QUICK_CHARGE : fg);
+            return;
         }
-        TEXT.setTextSize(size);
+        applyWeight(vs >= ss ? a.valueWeight : a.typeWeight);
 
-        // 整对在缺口里居中：左起 = 右边界 - 净宽/2 对应的左端
-        final float bw = TrioGeometry.BOLT_REF_W
-                * (size * TrioGeometry.CAP_HEIGHT_RATIO / TrioGeometry.BOLT_REF_H);
-        final float tw = TEXT.measureText(text);
-        final float totalW = bw + TrioGeometry.CHARGE_PAIR_GAP + tw;
-        final float left = TrioGeometry.B_CX - totalW * 0.5f;
-        final float baseline = top + size * TrioGeometry.CAP_HEIGHT_RATIO;
+        // 超宽就整体缩：配对高度小一点 ⇒ 净宽反而大一点，所以最多迭代几轮收住。
+        float k = 1f;
+        for (int i = 0; i < 3; i++) {
+            final float h = base * k * TrioGeometry.CAP_HEIGHT_RATIO;
+            final float clear = inGap
+                    ? TrioGeometry.gapClearWidthAt(TrioGeometry.GAP_TOP + h,
+                            TrioGeometry.GAP_START_CHARGE_PAIR,
+                            TrioGeometry.GAP_END_CHARGE_PAIR, stroke)
+                    : TrioGeometry.centreClearWidth(base * k, stroke);
+            final float total = pairWidth(level, mobileType, arcStroke, k, vs, ss, a, r);
+            if (total <= clear || total <= 0f) {
+                break;
+            }
+            k = k * clear / total;
+        }
 
-        // 闪电：高度 = 数字 cap 高度 ⇒ 上下边对齐；上边钉在 top
+        final float h = base * k * TrioGeometry.CAP_HEIGHT_RATIO;
+        // 缺口：上边钉在 GAP_TOP（与原来单独画闪电/数字时同一条线）。
+        // 环内：整对在环心那一行上下居中，与居中数字的基线规则一致。
+        final float top = inGap ? TrioGeometry.GAP_TOP
+                                : TrioGeometry.CENTER_CY - h * 0.5f;
+        final float bw = TrioGeometry.BOLT_REF_W * (h / TrioGeometry.BOLT_REF_H);
+        final float totalW = pairWidth(level, mobileType, arcStroke, k, vs, ss, a, r);
+        float px = TrioGeometry.B_CX - totalW * 0.5f;
+
+        // 闪电：高度 = 配对高度 ⇒ 与同伴上下边对齐；上边钉在 top
         final int save = c.save();
-        final float pairScale = size * TrioGeometry.CAP_HEIGHT_RATIO
-                / TrioGeometry.BOLT_REF_H;
-        c.translate(left, top);
+        final float pairScale = h / TrioGeometry.BOLT_REF_H;
+        c.translate(px, top);
         c.scale(pairScale, pairScale);
         c.translate(-51.3f, -2.2f);
         FILL.setColor(quickCharging ? TrioGeometry.QUICK_CHARGE : fg);
         c.drawPath(BOLT, FILL);
         c.restoreToCount(save);
+        px += bw + TrioGeometry.CHARGE_PAIR_GAP;
 
-        // 电量数字：与闪电同一条基线
-        TEXT.setTextAlign(Paint.Align.LEFT);
-        TEXT.setColor(fg);
-        c.drawText(text, left + bw + TrioGeometry.CHARGE_PAIR_GAP, baseline, TEXT);
-        TEXT.setTextAlign(Paint.Align.CENTER);
+        if (vs > 0f) {
+            // 电量数字
+            final float hv = vs * k * TrioGeometry.CAP_HEIGHT_RATIO;
+            final float ty = top + (h - hv) * 0.5f;
+            TEXT.setTextAlign(Paint.Align.LEFT);
+            TEXT.setTextSize(vs * k);
+            TEXT.setColor(fg);
+            c.drawText(String.valueOf(level), px, ty + hv, TEXT);
+            TEXT.setTextAlign(Paint.Align.CENTER);
+            px += TEXT.measureText(String.valueOf(level)) + TrioGeometry.CHARGE_PAIR_GAP;
+        }
+        if (ss > 0f) {
+            final float hs = ss * k * TrioGeometry.CAP_HEIGHT_RATIO;
+            final float ty = top + (h - hs) * 0.5f;
+            if (r.pairType) {
+                // 4G/5G/5GA 标签：组合图标里的 "A" 用自己那一档缩放
+                final float w = measureType(mobileType, ss * k, a.chargeSuffixAScale);
+                drawType(c, mobileType, px + w * 0.5f, ty + hs, ss * k, fg, a,
+                        a.chargeSuffixAScale);
+            } else {
+                // wifi 弧线：整组按配对高度缩放，上边与闪电上边同一条线
+                final int s2 = c.save();
+                final float ws = hs / TrioGeometry.wifiInkH(arcStroke);
+                c.translate(px + TrioGeometry.wifiInkW(arcStroke) * ws * 0.5f
+                                - TrioGeometry.W_CX * ws,
+                        ty - (TrioGeometry.W_TOP - arcStroke * 0.5f) * ws);
+                c.scale(ws, ws);
+                drawWifiArcs(c, wifiLevel, fg, a);
+                c.restoreToCount(s2);
+            }
+        }
     }
 
-    /** ★ v82：「闪电 + 空隙 + 数字」在字号 {@code size} 下的总宽度（设计单位）。 */
-    private static float chargePairWidth(String text, float size) {
-        final float boltH = size * TrioGeometry.CAP_HEIGHT_RATIO;
-        final float bw = TrioGeometry.BOLT_REF_W * (boltH / TrioGeometry.BOLT_REF_H);
-        TEXT.setTextSize(size);
-        return bw + TrioGeometry.CHARGE_PAIR_GAP + TEXT.measureText(text);
+    /**
+     * ★ v104：「闪电 + 空隙 + 同伴（最多两个）」在整体缩到 {@code k} 倍时的总宽度。
+     */
+    private static float pairWidth(int level, String mobileType, float arcStroke,
+                                   float k, float vs, float ss,
+                                   TrioAppearance a, TrioAppearance.Ring r) {
+        float total = TrioGeometry.BOLT_REF_W
+                * (Math.max(vs, ss) * k * TrioGeometry.CAP_HEIGHT_RATIO
+                   / TrioGeometry.BOLT_REF_H);
+        if (vs > 0f) {
+            TEXT.setTextSize(vs * k);
+            total += TrioGeometry.CHARGE_PAIR_GAP + TEXT.measureText(String.valueOf(level));
+        }
+        if (ss > 0f) {
+            if (r.pairType) {
+                total += TrioGeometry.CHARGE_PAIR_GAP
+                        + measureType(mobileType, ss * k, a.chargeSuffixAScale);
+            } else {
+                final float hs = ss * k * TrioGeometry.CAP_HEIGHT_RATIO;
+                total += TrioGeometry.CHARGE_PAIR_GAP
+                        + TrioGeometry.wifiInkW(arcStroke)
+                        * (hs / TrioGeometry.wifiInkH(arcStroke));
+            }
+        }
+        return total;
     }
 
     /**
@@ -457,7 +523,8 @@ final class TrioRenderer {
         final float requested = a.typeSize * TrioGeometry.RECT_TYPE_SCALE;
         applyWeight(a.typeWeight);
         final float size = fitSize(type, requested, TrioGeometry.RECT_TEXT_CLEAR, a.typeSuffixScale);
-        drawType(c, type, TrioGeometry.RECT_VALUE_X, TrioGeometry.RECT_TYPE_BASELINE, size, fg, a);
+        drawType(c, type, TrioGeometry.RECT_VALUE_X, TrioGeometry.RECT_TYPE_BASELINE,
+                size, fg, a, a.typeSuffixScale);
     }
 
     /** The percentage, in the middle of the arrangement and at its own scale. */
@@ -1172,7 +1239,8 @@ final class TrioRenderer {
         final float clear = TrioGeometry.centreClearWidth(requested, a.ringStroke);
         applyWeight(a.typeWeight);
         final float size = fitSize(type, requested, clear, a.typeSuffixScale);
-        drawType(c, type, TrioGeometry.VALUE_X, TrioGeometry.centerBaseline(size), size, fg, a);
+        drawType(c, type, TrioGeometry.VALUE_X, TrioGeometry.centerBaseline(size),
+                size, fg, a, a.typeSuffixScale);
     }
 
     /**
@@ -1186,7 +1254,8 @@ final class TrioRenderer {
         final float clear = TrioGeometry.gapClearWidth(a.ringStroke);
         applyWeight(a.typeWeight);
         final float size = fitSize(type, requested, clear, a.typeSuffixScale);
-        drawType(c, type, TrioGeometry.VALUE_X, TrioGeometry.gapBaseline(size), size, fg, a);
+        drawType(c, type, TrioGeometry.VALUE_X, TrioGeometry.gapBaseline(size),
+                size, fg, a, a.typeSuffixScale);
     }
 
     /**
@@ -1207,8 +1276,8 @@ final class TrioRenderer {
      *          to centre the block it composes
      */
     private static void drawType(Canvas c, String type, float x, float baseline,
-                                 float size, int fg, TrioAppearance a) {
-        if (!TrioGeometry.hasShrunkSuffix(type, a.typeSuffixScale)) {
+                                 float size, int fg, TrioAppearance a, int suffixPercent) {
+        if (!TrioGeometry.hasShrunkSuffix(type, suffixPercent)) {
             TEXT.setTextAlign(Paint.Align.CENTER);
             TEXT.setTextSize(size);
             TEXT.setColor(fg);
@@ -1217,7 +1286,7 @@ final class TrioRenderer {
         }
         final String base = TrioGeometry.typeBase(type);
         final String suffix = String.valueOf(TrioGeometry.TYPE_SUFFIX);
-        final float suffixSize = size * a.typeSuffixScale / 100f;
+        final float suffixSize = size * suffixPercent / 100f;
         // Measure both runs, then place them as one centred block: total width
         // is the layout, and the label's own centre is what stays put.
         TEXT.setTextAlign(Paint.Align.LEFT);

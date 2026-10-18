@@ -69,10 +69,20 @@
 
     <string name="glyph_shift_title">Shift whole group</string>
     <string name="glyph_shift_summary">Moves the whole trio icon left or right. 0 = default position; adjusts the trio icon right margin.</string>
-    <string name="charge_with_value_title">Show level while charging</string>
-    <string name="charge_with_value_summary">When on, the battery level is drawn next to the bolt while charging; when off, charging shows the bolt only and the level is hidden.</string>
+    <string name="charge_pair_title">Show level while charging</string>
+    <string name="charge_pair_summary">Draws the battery level next to the bolt while charging. Hidden = default; On ring = in the charging notch; In ring = in the middle of the ring.</string>
+    <string name="charge_signal_title">Show signal while charging</string>
+    <string name="charge_signal_summary">On = the signal icon also goes into the charging notch and lines up with the bolt; Off = the signal is hidden. Requires \"Centre the level\".</string>
+    <string name="charge_pair_off">Hidden</string>
+    <string name="charge_pair_gap">On ring</string>
+    <string name="charge_pair_centre">In ring</string>
     <string name="charge_value_size_title">Bolt and level size</string>
-    <string name="charge_value_size_summary">Font size for the bolt-plus-level pair. Default 30, range 30-36.</string>
+    <string name="charge_value_size_summary">Size of the bolt-plus-level pair. Default 30, range 30-35.</string>
+    <string name="charge_signal_size_title">Bolt and signal size</string>
+    <string name="charge_signal_size_summary">Size of the bolt-plus-signal pair. Default 30, range 30-35.</string>
+    <string name="charge_suffix_a_title">"A" size in the pair</string>
+    <string name="charge_suffix_a_summary">Applies only when the pair shows 5GA: size of the trailing "A" as a percentage of the main size. Default 65%, range 50-100%.</string>
+    <string name="group_charge_pair">Charging pair</string>
     <string name="glyph_left_offset_title">Group left offset</string>
     <string name="glyph_left_offset_summary">Distance from the native status bar icons to the trio icon. Default 0, range -8.0 to +8.0dp.</string>
 
@@ -99,7 +109,7 @@
     <string name="perf_weight_summary">Stroke weight of the reading text, range 100-900.</string>
 
     <string name="value_centre_title">Centre the percentage</string>
-    <string name="value_centre_summary">Enlarges the battery level into the middle of the ring, where it always takes priority. The Wi-Fi arcs shrink into the top notch, and while charging a small bolt takes the notch (no Wi-Fi arcs then).</string>
+    <string name="value_centre_summary">Enlarges the battery level into the middle of the ring, where it always takes priority. The Wi-Fi arcs shrink into the top notch, and while charging a small bolt takes the notch.</string>
 
     <string name="color_role_title">State colors</string>
     <string name="color_role_summary">Pick colors for low battery, charging and critical battery.</string>

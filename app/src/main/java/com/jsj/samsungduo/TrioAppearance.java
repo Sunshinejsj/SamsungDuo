@@ -103,10 +103,23 @@ public final class TrioAppearance {
     public final int lowThreshold;
     /** ★ v77：省电模式是否参与电量着色（默认开；三星原生不染色，可关）。 */
     public final boolean powerSaveTint;
-    /** ★ v82：充电时闪电与电量同时显示（缺口左闪电、右电量，上下边对齐）。 */
-    public final boolean chargeWithValue;
-    /** ★ v82：「闪电+电量」这一对的字号（30–36，空间不足时自动缩小）。 */
+    /** ★ v104：充电同显三选项（0 隐藏 / 1 圈上 / 2 圈内），**只管电量那一对**。 */
+    public final int chargePairMode;
+    /**
+     * ★ v104：信号要不要也去缺口跟闪电并排（＝ L29 的样子）。
+     *
+     * <p>「电量数字居中」关着时本开关灰色不可用，代码里也强制当作关 ——
+     * 那时信号本来就在环内正常显示，不需要它。
+     */
+    public final boolean chargeSignalAlso;
+    /** ★ v104：三选项已开启（真画出来还要这一帧确实有闪电）。 */
+    public final boolean chargePairWanted;
+    /** ★ v82：「闪电+电量」这一对的字号（30–35，空间不足时自动缩小）。 */
     public final int chargeValueSize;
+    /** ★ v104：「闪电+信号」这一对的信号大小（30–35，与电量字号同一档位）。 */
+    public final int chargeSignalSize;
+    /** ★ v104：组合图标里 5GA 的 "A" 相对主字号的百分比（50–100）。 */
+    public final int chargeSuffixAScale;
 
     public final int ringStroke;
     public final int arcStroke;
@@ -168,8 +181,14 @@ public final class TrioAppearance {
         lowOnLight = c.lowOnLight;
         lowThreshold = c.lowThreshold;
         powerSaveTint = c.powerSaveColor;
-        chargeWithValue = c.chargeWithValue;
+        chargePairMode = c.chargePairMode;
+        chargeSignalAlso = c.chargeSignalAlso && c.valueCentred;
+        // 这一排存在吗：三选项不是"隐藏"，或者信号开关开着（那也有一排）。
+        chargePairWanted = c.chargePairMode != Prefs.CHARGE_PAIR_OFF
+                || (c.chargeSignalAlso && c.valueCentred);
         chargeValueSize = c.chargeValueSize;
+        chargeSignalSize = c.chargeSignalSize;
+        chargeSuffixAScale = c.chargeSuffixAScale;
 
         ringStroke = c.ringStroke;
         arcStroke = c.arcStroke;
@@ -348,6 +367,21 @@ public final class TrioAppearance {
         public final boolean wifiInGap;
         /** The bolt takes the notch. */
         public final boolean bolt;
+        /**
+         * ★ v104：这一帧画的是「闪电 + 同伴」的组合图标，且它落在 12 点缺口。
+         *
+         * <p>缺口因此要用 {@link TrioGeometry#GAP_START_CHARGE_PAIR} 那档加宽口，
+         * 普通充电缺口只按一颗闪电定宽，装不下两个。
+         */
+        public final boolean pairInGap;
+        /** ★ v104：组合图标落在环内（环心那一行）。 */
+        public final boolean pairInCentre;
+        /** ★ v104：组合图标里闪电的同伴是 wifi 弧线。 */
+        public final boolean pairWifi;
+        /** ★ v104：同伴是网络类型标签（4G/5G/5GA）。 */
+        public final boolean pairType;
+        /** ★ v104：同伴是电量数字。 */
+        public final boolean pairValue;
         /** The percentage is drawn at all. */
         public final boolean drawValue;
         public final boolean valueInCentre;
@@ -379,24 +413,76 @@ public final class TrioAppearance {
             // which is where it already goes whenever the notch is spoken for.
             // The in-glyph type label then yields, exactly as it does to the
             // percentage everywhere else.
-            valueInCentre = hasValue && (a.centreValue || dual || (!wifi && !type));
-            // ★ v82：充电时「闪电+电量」同显（用户要"充电也能看到电量"）。
-            //   默认情况下 bolt 占了缺口、type 占了环中心，电量就整个不画；
-            //   开关打开后让电量与闪电**共用**缺口：左闪电、右电量、上下边对齐。
-            final boolean chargePair = bolt && a.chargeWithValue && hasValue;
-            valueInGap = hasValue && !valueInCentre && (!bolt || chargePair);
-            wifiInGap = wifi && a.centreValue && !bolt;
-            typeInCentre = type && !wifi && !valueInCentre;
-            // The second row sits in the notch the gap label would otherwise use,
-            // so the label yields rather than overlapping SIM 1's dots.
-            typeInGap = type && valueInCentre && !wifi && !bolt && !dual;
+            final boolean valueCentreDefault = hasValue
+                    && (a.centreValue || dual || (!wifi && !type));
+
+            // ★ v104：两个控件。
+            //
+            //   · 三选项（隐藏 / 圈上 / 圈内）**只管电量那一对**：闪电去选中的槽，
+            //     电量跟着并排，上下边对齐。取代 v82 那个布尔开关。
+            //   · 「信号也要去缺口」那个开关**只管信号**：开着时缺口归信号，缺口里
+            //     画「闪电 + 信号」（＝ L29 的样子）；三选项这时对缺口不再起作用，
+            //     电量回它「电量数字居中」给它的位置。
+            //
+            //   两者天然与「电量数字居中」联动 —— 上面的构造函数已经在居中关着时
+            //   把 chargeSignalAlso 强制成了关，所以居中关时下面这一整套就是正式版：
+            //   信号在环内正常显示，只有三选项管电量。
+            final boolean signalAlso = a.chargeSignalAlso;
+            // 三选项照常（隐藏 / 圈上 / 圈内），信号开关只决定"信号受不受它调动"：
+            //
+            // · 「电量数字居中」**关**着 —— 信号开关被构造函数强制成了关（三选项管
+            //   电量那一对，也就是 v82 那个开关的三选项化）：圈上 = 缺口，圈内 = 环内。
+            // · 「电量数字居中」**开**着 + 信号开关**关** —— 三选项整体失效，一律
+            //   按"隐藏"画：信号不参与缺口，缺口只剩闪电，87 留在圈内 = 正式版。
+            // · 「电量数字居中」**开**着 + 信号开关**开** —— 三选项管的是**信号**
+            //   的位置：隐藏 = 信号不显示，圈上 = 信号去缺口，圈内 = 信号去环内。
+            final int mode = (a.centreValue && !a.chargeSignalAlso)
+                    ? Prefs.CHARGE_PAIR_OFF : a.chargePairMode;
+            final boolean pairOn = bolt && mode != Prefs.CHARGE_PAIR_OFF;
+            pairInGap = pairOn && mode == Prefs.CHARGE_PAIR_GAP;
+            pairInCentre = pairOn && !pairInGap;
+            // 闪电是否占着 12 点缺口：只有"圈内"这一档才把缺口让出来。
+            final boolean boltInGap = bolt && !pairInCentre;
+
+            // 三槽规则（L29 起就没变过）：每个槽在"没有闪电"时站着谁，同伴就从
+            // 这里挑 —— 优先级按渲染层原本的让位顺序：wifi > 类型 > 电量（缺口），
+            // 电量 > 类型 > wifi（圈内）。
+            //
+            // ★ 不要在这里另开"信号让位、电量顶上"的分支：「数字居中」关着时信号
+            //   开关被强制成关，可那一档环内站着的本来就是信号 —— 让电量顶上会
+            //   把 87 和信号画到同一行（用户实测重叠）。这三槽优先级天然就给出
+            //   正确结果：居中关 + 圈内 ⇒ 同伴是信号、缺口留 87。
+            valueInCentre = valueCentreDefault;
+            final boolean wifiTakesGap = wifi && a.centreValue;
+            final boolean typeTakesGap = type && valueInCentre && !wifi && !dual;
+            final boolean valueTakesGap = hasValue && !valueInCentre;
+            if (pairInGap) {
+                pairWifi = wifiTakesGap;
+                pairType = !pairWifi && typeTakesGap;
+                pairValue = !pairWifi && !pairType && valueTakesGap;
+            } else if (pairInCentre) {
+                pairValue = valueInCentre;
+                pairType = !pairValue && type && !wifi;
+                pairWifi = !pairValue && !pairType && wifi;
+            } else {
+                pairWifi = false;
+                pairType = false;
+                pairValue = false;
+            }
+            wifiInGap = wifi && a.centreValue && (!bolt || pairOn);
+            typeInCentre = type && !wifi && !valueInCentre && !pairType;
+            typeInGap = type && valueInCentre && !wifi && !boltInGap && !dual;
+            // 数字：缺口被闪电占着时不画（v82 之前的老规则）；但当闪电的同伴
+            // 正是数字时，它由组合图标那一笔带出来。
+            valueInGap = hasValue && !valueInCentre && (!boltInGap || pairValue);
             // The rows live in the ring's two openings, so the ring has to open
             // even when nothing else claimed the notch: a closed ring would draw
             // its arc straight through the top row.
-            gapUsed = bolt || wifiInGap || valueInGap || typeInGap || dual;
-            // With the centre reserved and nothing to move into the notch, the
-            // arcs are dropped outright rather than drawn behind the number.
-            drawWifi = a.wifi && (!a.centreValue || wifiInGap);
+            gapUsed = boltInGap || wifiInGap || valueInGap || typeInGap || dual;
+            // ★ 信号已经被组合图标带走时（pairWifi / pairType），这里必须让路 ——
+            //   否则同一组弧线会被画两遍：缺口那一排里一遍、原本的位置又一遍，
+            //   两者叠在一起（用户实测「圈上 + 信号开」和「圈内」都叠）。
+            drawWifi = a.wifi && (!a.centreValue || wifiInGap) && !pairWifi;
             drawValue = valueInCentre || valueInGap;
         }
     }

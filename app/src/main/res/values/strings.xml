@@ -69,10 +69,20 @@
 
     <string name="glyph_shift_title">整组左右平移</string>
     <string name="glyph_shift_summary">整体左右移动三合一图标。0 = 默认位置；可调整三合一图标的右边距。</string>
-    <string name="charge_with_value_title">充电时同时显示电量</string>
-    <string name="charge_with_value_summary">开启时在闪电旁边同时显示电量数字，关闭时充电只显示闪电，隐藏电量显示。</string>
-    <string name="charge_value_size_title">闪电与电量字号</string>
-    <string name="charge_value_size_summary">调整"闪电＋电量"的字号，默认 30，可调范围30–36。</string>
+    <string name="charge_pair_title">充电时同时显示电量</string>
+    <string name="charge_pair_summary">充电时把电量数字和闪电并排显示。隐藏时保持默认；圈上时放在充电缺口；圈内时放在圆环中间。</string>
+    <string name="charge_signal_title">充电时同时显示信号</string>
+    <string name="charge_signal_summary">开启时信号图示也放到充电缺口和闪电并排显示；关闭时信号隐藏。需要开启「电量数字居中」。</string>
+    <string name="charge_pair_off">隐藏</string>
+    <string name="charge_pair_gap">圈上</string>
+    <string name="charge_pair_centre">圈内</string>
+    <string name="charge_value_size_title">闪电与电量大小</string>
+    <string name="charge_value_size_summary">调整"闪电＋电量"的大小，默认 30，可调范围 30–35。</string>
+    <string name="charge_signal_size_title">闪电与信号大小</string>
+    <string name="charge_signal_size_summary">调整"闪电＋信号"的大小，默认 30，可调范围 30–35。</string>
+    <string name="charge_suffix_a_title">组合图标中 A 的大小</string>
+    <string name="charge_suffix_a_summary">只在组合图标里显示 5GA 时生效，调整尾部 "A" 相对主字号的百分比。默认 65%，可调范围 50–100%。</string>
+    <string name="group_charge_pair">充电组合图标</string>
     <string name="glyph_left_offset_title">整组左侧间距</string>
     <string name="glyph_left_offset_summary">调整原生状态栏到三合一图标的距离。默认 0，可调范围 -8.0～+8.0dp。</string>
 
@@ -99,7 +109,7 @@
     <string name="perf_weight_summary">读数文字的笔画粗细，可调范围100-900。</string>
 
     <string name="value_centre_title">电量数字居中</string>
-    <string name="value_centre_summary">电量数字放大到圆环中间并始终优先占据圆心。Wi-Fi 弧缩到顶部缺口，充电时改用小的闪电占用缺口（此时不显示 Wi-Fi 弧）。</string>
+    <string name="value_centre_summary">电量数字放大到圆环中间并始终优先占据圆心。Wi-Fi 弧缩到顶部缺口，充电时改用小的闪电占用缺口。</string>
 
     <string name="color_role_title">状态颜色</string>
     <string name="color_role_summary">分别为低电量、充电与危险电量指定颜色。</string>
