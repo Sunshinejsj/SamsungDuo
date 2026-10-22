@@ -105,6 +105,10 @@
     <string name="capsule_bolt_gap">圈上</string>
     <string name="capsule_bolt_gap_pair">圈上+同伴</string>
     <string name="capsule_bolt_centre_pair">右侧+同伴</string>
+    <string name="capsule_shape_title">胶囊形状</string>
+    <string name="capsule_shape_summary">三星风格圆角更方（匹配 S25U）。</string>
+    <string name="capsule_shape_normal">常规</string>
+    <string name="capsule_shape_samsung">三星风格</string>
     <string name="glyph_left_offset_title">整组左侧间距</string>
     <string name="glyph_left_offset_summary">调整原生状态栏到三合一图标的距离。默认 0，可调范围 -8.0～+8.0dp。</string>
 

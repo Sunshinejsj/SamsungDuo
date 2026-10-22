@@ -30,6 +30,14 @@ final class TrioRenderer {
     }
 
     private static final Paint STROKE = new Paint(Paint.ANTI_ALIAS_FLAG);
+    /**
+     * ★ L67/L68：胶囊电量填充专用画笔 —— 圆帽（ROUND）、圆接（ROUND）。
+     *
+     * <p>整条填充（L68 起）建一条 Path、一次描完：段与段之间是"接"（join）而不是
+     * 各自起笔的"帽"（cap），所以既不会两层墨色叠出黑点，也没有切口留下的发丝缝；
+     * 路径两端仍是圆帽，正好盖住暗轨在该处的圆头，不会露出浅色缺口。
+     */
+    private static final Paint FILL_STROKE = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint FILL = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint TEXT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Path BOLT = buildBolt();
@@ -67,6 +75,9 @@ final class TrioRenderer {
         STROKE.setStyle(Paint.Style.STROKE);
         STROKE.setStrokeCap(Paint.Cap.ROUND);
         STROKE.setStrokeJoin(Paint.Join.ROUND);
+        FILL_STROKE.setStyle(Paint.Style.STROKE);
+        FILL_STROKE.setStrokeCap(Paint.Cap.ROUND);
+        FILL_STROKE.setStrokeJoin(Paint.Join.ROUND);
         FILL.setStyle(Paint.Style.FILL);
         TEXT.setStyle(Paint.Style.FILL);
         TEXT.setTextAlign(Paint.Align.CENTER);
@@ -1556,7 +1567,9 @@ final class TrioRenderer {
 
     // =====================================================================
     //  胶囊（STYLE_CAPSULE）—— 整体系移植上游 HyperDuo v1.7 图形
-    //  · 电量填充用 run()/cap() 逐段走线（不画闭合路径 → 无多余直线）
+    //  · 电量填充用 run()/cap() 逐段走线（不画闭合路径 → 无多余直线）；
+    //    端帽 capSquircle 建一条 Path 一次描完（L66：逐段 drawLine 的 ROUND 帽
+    //    互相重叠十几层，半透明墨色叠成纯黑，实机"左右两边发黑"）
     //  · 三车道 Zone（TOP=缺口 / CENTRE=环心右列 / BOTTOM=底部信号点）各持一件，
     //    天然不重叠（WIFI 不再压电量数字）
     //  · 开口件落在轮廓线 capOpeningCy，宿主高度含开口带 capHostHeightPx → 尺寸正确
@@ -1589,13 +1602,15 @@ final class TrioRenderer {
         final float bottomReach =
                 openingReach(cap, TrioAppearance.Zone.BOTTOM, stroke, level, mobileType, a);
         final Path outline = new Path();
-        buildCapsuleOutline(outline, topReach, bottomReach);
+        buildCapsuleOutline(outline, topReach, bottomReach, a.capsuleShape);
         STROKE.setColor(withAlpha(fg, a.trackAlpha));
         canvas.drawPath(outline, STROKE);
 
         if (level > 0) {
-            STROKE.setColor(role);
-            drawCapsuleFill(canvas, stroke, Math.min(1f, level / 100f), topReach, bottomReach);
+            // ★ L67：填充走 FILL_STROKE（方帽），直段与端帽在接头处不互相叠色。
+            FILL_STROKE.setColor(role);
+            drawCapsuleFill(canvas, stroke, Math.min(1f, level / 100f), topReach, bottomReach,
+                    a.capsuleShape);
         }
 
         if (cap.dots) {
@@ -1784,8 +1799,13 @@ final class TrioRenderer {
     /**
      * 胶囊轮廓（体育场形），顶/底各按 reach 开口。两个开子路径，端帽用两段
      * 四分之一圆贝塞尔 —— 不建闭合路径，不会有多余连线。
+     *
+     * <p>★ 按钮4 胶囊形状：{@code shape == CAP_SHAPE_SAMSUNG} 时端帽改画超椭圆
+     * （{@link TrioGeometry#CAP_SHAPE_SAMSUNG_N}），圆心/宽高与常规完全一致，仅端部更方、
+     * 连接缓和。除端帽外所有直线段与常规路径逐点相同，所以 NORMAL 走原半圆、SAMSUNG 走
+     * {@link #appendCap} 采样折线，二者互不干扰。
      */
-    private static void buildCapsuleOutline(Path p, float topReach, float bottomReach) {
+    private static void buildCapsuleOutline(Path p, float topReach, float bottomReach, int shape) {
         final float left = TrioGeometry.CAP_LEFT;
         final float right = TrioGeometry.CAP_RIGHT;
         final float top = TrioGeometry.CAP_TOP;
@@ -1793,8 +1813,24 @@ final class TrioRenderer {
         final float r = TrioGeometry.CAP_RADIUS;
         final float cy = (top + bottom) * 0.5f;
         final float cx = (left + right) * 0.5f;
+        p.reset();
+        if (shape == Prefs.CAP_SHAPE_SAMSUNG) {
+            final float n = TrioGeometry.CAP_SHAPE_SAMSUNG_N;
+            // 右帽：圆心 (right - r, cy)，上半 θ:-90°→0°、下半 θ:0°→+90°。
+            p.moveTo(cx + topReach, top);
+            p.lineTo(right - r, top);
+            appendCap(p, right - r, cy, r, n, (float) -Math.PI / 2, 0f, false);
+            appendCap(p, right - r, cy, r, n, 0f, (float) Math.PI / 2, false);
+            p.lineTo(cx + bottomReach, bottom);
+            // 左帽：圆心 (left + r, cy)，下半 θ:+90°→0°、上半 θ:0°→-90°（镜像）。
+            p.moveTo(cx - bottomReach, bottom);
+            p.lineTo(left + r, bottom);
+            appendCap(p, left + r, cy, r, n, (float) Math.PI / 2, 0f, true);
+            appendCap(p, left + r, cy, r, n, 0f, (float) -Math.PI / 2, true);
+            p.lineTo(cx - topReach, top);
+            return;
+        }
         final float k = 0.5522847498307936f * r;
-
         p.reset();
         p.moveTo(cx + topReach, top);
         p.lineTo(right - r, top);
@@ -1809,11 +1845,42 @@ final class TrioRenderer {
     }
 
     /**
-     * ★ 电量填充：把轮廓当一条线，从底缺口左缘起顺时针逐段走（run 画线 + cap 画弧）。
-     * 逐段画到画布上，不建闭合路径 —— 物理上不可能产生"83% 之后又多一条直线"。
+     * 超椭圆端帽采样：以 {@code (ccx, ccy)} 为圆心、半半径 {@code r}，沿角 {@code a0→a1}
+     * 追加 {@code SEG} 段折线。公式 {@code x = ccx ± r·|cos a|^(2/n)·sign(cos a)}、
+     * {@code y = ccy + r·|sin a|^(2/n)·sign(sin a)}；n=2 时退化为圆。
+     * {@code leftSide} 翻转 x 方向（左帽朝 -x 鼓出）。调用方须先 {@code moveTo} 到接边点。
+     */
+    private static void appendCap(Path p, float ccx, float ccy, float r, float n,
+                                  float a0, float a1, boolean leftSide) {
+        final int SEG = 20;
+        final float xdir = leftSide ? -1f : 1f;
+        for (int i = 1; i <= SEG; i++) {
+            final float a = a0 + (a1 - a0) * i / SEG;
+            final float ct = (float) Math.cos(a);
+            final float st = (float) Math.sin(a);
+            final float x = ccx + xdir * r * (float) Math.pow(Math.abs(ct), 2f / n) * Math.signum(ct);
+            final float y = ccy + r * (float) Math.pow(Math.abs(st), 2f / n) * Math.signum(st);
+            p.lineTo(x, y);
+        }
+    }
+
+    /**
+     * ★ L68：胶囊电量填充<b>整条建一条 Path、一次描完</b>。
+     *
+     * <p>旧实现分 6 段分批画（4 段直走线 + 2 个端帽），每段各自起笔：
+     * ① 段与段的接头处两个圆帽互相压一次 ⇒ 叠出近黑圆点（L66 实测：端帽
+     * RGB≈(1,1,1) vs 直边 (42,55,61)）；② 改成方帽后接头又留下发丝缝，
+     * 且填充的平切端盖不住暗轨的圆头 ⇒ 环上出现 6 个缺口（L67 实测，100% 时
+     * 8 个 —— 与用户"6 个缺口、充满 8 个"的计数完全吻合）。一次描完没有段间
+     * 重叠、没有内部切口，两端仍是圆帽，正好盖住暗轨的圆头 —— 黑点与缺口同时
+     * 消失。渲染模型没变：同一条填充路径、同样的颜色、同样叠在暗轨之上。
+     *
+     * <p>段序与预算算法与旧实现逐字一致（底左走线 → 左帽 → 顶左走线 → 顶右走线
+     * → 右帽 → 底右走线），只是"画到画布"变成"记进一条路径"；顶/底开口处断开
+     * 成两条子路径（{@code fresh=true} 用 moveTo），不会画出跨开口的弦。
      */
     private static void drawCapsuleFill(Canvas c, float stroke, float fraction,
-                                        float topReach, float bottomReach) {
+                                        float topReach, float bottomReach, int shape) {
         final float left = TrioGeometry.CAP_LEFT;
         final float right = TrioGeometry.CAP_RIGHT;
         final float top = TrioGeometry.CAP_TOP;
@@ -1825,48 +1892,132 @@ final class TrioRenderer {
         final float bottomLeft = (cx - bottomReach) - (left + r);
         final float bottomRight = (right - r) - (cx + bottomReach);
         final float topRight = (right - r) - (cx + topReach);
-        final float capLen = (float) Math.PI * r;
+        final float capLen = (shape == Prefs.CAP_SHAPE_SAMSUNG)
+                ? capArcLen(r, TrioGeometry.CAP_SHAPE_SAMSUNG_N)
+                : (float) Math.PI * r;
         final float total = topLeft + capLen + bottomLeft + bottomRight + capLen + topRight;
         if (total <= 0f) {
             return;
         }
-        float left0 = total * fraction;
-        left0 = run(c, left0, bottomLeft, cx - bottomReach, bottom, left + r, bottom);
-        left0 = cap(c, left0, capLen, left + r, cy, r, 90f, 180f);
-        left0 = run(c, left0, topLeft, left + r, top, cx - topReach, top);
-        left0 = run(c, left0, topRight, cx + topReach, top, right - r, top);
-        left0 = cap(c, left0, capLen, right - r, cy, r, 270f, 180f);
-        run(c, left0, bottomRight, right - r, bottom, cx + bottomReach, bottom);
+        final float budget = total * fraction;
+        if (budget <= 0f) {
+            return;
+        }
+        final Path p = new Path();
+        float left0 = budget;
+        // 子路径 A：底左走线 → 左帽 → 顶左走线
+        left0 = run(p, left0, bottomLeft, cx - bottomReach, bottom, left + r, bottom, true);
+        left0 = cap(p, left0, capLen, left + r, cy, r, 90f, 180f, shape);
+        left0 = run(p, left0, topLeft, left + r, top, cx - topReach, top, false);
+        // 子路径 B：顶右走线 → 右帽 → 底右走线（顶开口把两段断开）
+        left0 = run(p, left0, topRight, cx + topReach, top, right - r, top, true);
+        left0 = cap(p, left0, capLen, right - r, cy, r, 270f, 180f, shape);
+        run(p, left0, bottomRight, right - r, bottom, cx + bottomReach, bottom, false);
+        FILL_STROKE.setStrokeWidth(stroke);
+        c.drawPath(p, FILL_STROKE);
     }
 
-    /** 尽量画一段直走线，返回剩余预算。 */
-    private static float run(Canvas c, float remaining, float length,
-                             float x1, float y1, float x2, float y2) {
+    /**
+     * 尽量追加一段直走线到填充路径，返回剩余预算。
+     * {@code fresh=true} 表示另起一条子路径（跨开口处），否则续接当前点。
+     */
+    private static float run(Path p, float remaining, float length,
+                             float x1, float y1, float x2, float y2, boolean fresh) {
         if (remaining <= 0f || length <= 0f) {
             return remaining;
         }
+        if (fresh) {
+            p.moveTo(x1, y1);
+        }
         if (remaining >= length) {
-            c.drawLine(x1, y1, x2, y2, STROKE);
+            p.lineTo(x2, y2);
             return remaining - length;
         }
         final float t = remaining / length;
-        c.drawLine(x1, y1, x1 + (x2 - x1) * t, y1 + (y2 - y1) * t, STROKE);
+        p.lineTo(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t);
         return 0f;
     }
 
-    /** 尽量画一个半圆帽，sweepDeg 有符号，从到达端开始长。 */
-    private static float cap(Canvas c, float remaining, float length,
-                             float cx, float cy, float r, float startDeg, float sweepDeg) {
+    /** 尽量追加一个端帽，sweepDeg 有符号，从到达端开始长。SAMSUNG 形状走超椭圆采样折线。 */
+    private static float cap(Path p, float remaining, float length,
+                             float cx, float cy, float r, float startDeg, float sweepDeg,
+                             int shape) {
         if (remaining <= 0f || length <= 0f) {
             return remaining;
         }
+        if (shape == Prefs.CAP_SHAPE_SAMSUNG) {
+            return capSquircle(p, remaining, cx, cy, r,
+                    TrioGeometry.CAP_SHAPE_SAMSUNG_N, startDeg, sweepDeg);
+        }
         ARC.set(cx - r, cy - r, cx + r, cy + r);
         if (remaining >= length) {
-            c.drawArc(ARC, startDeg, sweepDeg, false, STROKE);
+            p.arcTo(ARC, startDeg, sweepDeg);
             return remaining - length;
         }
-        c.drawArc(ARC, startDeg, sweepDeg * (remaining / length), false, STROKE);
+        p.arcTo(ARC, startDeg, sweepDeg * (remaining / length));
         return 0f;
+    }
+
+    /**
+     * 超椭圆端帽的电量填充：沿 canvas 角度 {@code startDeg→startDeg+sweepDeg}
+     * 采样 {@code |cos|^(2/n)/|sin|^(2/n)} 折线并按预算逐段追加到填充路径。
+     * 角度约定与圆弧一致（0°=右、90°=下），n=2 时逐点落回圆上；预算耗尽停在半途。
+     *
+     * <p>★ L66/L68：整条端帽不再单独描边，而是并进填充的那一条 Path ——
+     * 段间既不重叠（无叠色黑点）、也无切口（无发丝缝），端帽与直边同色。
+     */
+    private static float capSquircle(Path p, float remaining,
+                                     float cx, float cy, float r, float n,
+                                     float startDeg, float sweepDeg) {
+        final int SEG = 48;
+        final float a0 = (float) Math.toRadians(startDeg);
+        final float a1 = (float) Math.toRadians(startDeg + sweepDeg);
+        // 种子点取真正的起点 (a=a0)，与相邻 run 的终点精确相接 —— 旧实现 px=py=0
+        // 且 i>1 才画线，漏掉了 a0→首段采样之间的小段，在底角处留下 1~2px 楔形缝
+        // （用户实机"断裂"，L63 修）。
+        final float c0 = (float) Math.cos(a0);
+        final float s0 = (float) Math.sin(a0);
+        float px = cx + r * (float) Math.pow(Math.abs(c0), 2f / n) * Math.signum(c0);
+        float py = cy + r * (float) Math.pow(Math.abs(s0), 2f / n) * Math.signum(s0);
+        float consumed = 0f;
+        for (int i = 1; i <= SEG; i++) {
+            final float a = a0 + (a1 - a0) * i / SEG;
+            final float ct = (float) Math.cos(a);
+            final float st = (float) Math.sin(a);
+            final float x = cx + r * (float) Math.pow(Math.abs(ct), 2f / n) * Math.signum(ct);
+            final float y = cy + r * (float) Math.pow(Math.abs(st), 2f / n) * Math.signum(st);
+            final float segLen = (float) Math.hypot(x - px, y - py);
+            if (remaining - consumed >= segLen) {
+                p.lineTo(x, y);
+                consumed += segLen;
+            } else {
+                final float t = Math.max(0f, (remaining - consumed) / segLen);
+                p.lineTo(px + (x - px) * t, py + (y - py) * t);
+                consumed = remaining;
+                break;
+            }
+            px = x;
+            py = y;
+        }
+        return remaining - consumed;
+    }
+
+    /** 超椭圆半周（φ 0→180°，对应一个端帽整段）的弧长；n=2 时等于 π·r。 */
+    private static float capArcLen(float r, float n) {
+        final int SEG = 96;
+        float len = 0f;
+        float px = r, py = 0f;
+        for (int i = 1; i <= SEG; i++) {
+            final float a = (float) Math.PI * i / SEG;
+            final float ct = (float) Math.cos(a);
+            final float st = (float) Math.sin(a);
+            final float x = r * (float) Math.pow(Math.abs(ct), 2f / n) * Math.signum(ct);
+            final float y = r * (float) Math.pow(Math.abs(st), 2f / n) * Math.signum(st);
+            len += (float) Math.hypot(x - px, y - py);
+            px = x;
+            py = y;
+        }
+        return len;
     }
 
     /** 顶/底两个点行，各按其车道是否载点行而画。 */

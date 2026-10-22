@@ -1790,15 +1790,16 @@ public final class TrioOverlay {
                 }
                 vg.setClipChildren(false);
                 vg.setClipToPadding(false);
-                // ★ 第三种裁剪机制：**轮廓裁剪**（clipToOutline）。它与 clipChildren /
-                //   clipToPadding / clipBounds 都独立，只有设了 OutlineProvider 才会生效。
-                //   实测：停用 OneuiXP 不裁、启用就裁，而前两项都没被改过 ——
-                //   而 OneuiXP 的 dex 里正好有 setOutlineProvider/setClipToOutline。
-                //   这里一并关掉，并在发现它是开着时打日志（那就是裁剪的真凶）。
-                if (Boolean.TRUE.equals(boolCallCached(vg))) {
-                    flippedOutline = true;
-                }
-                setClipToOutlineCached(vg, false);
+                // ★ 第三种裁剪机制：**轮廓裁剪**（clipToOutline）—— 这一条**只为
+                //   OneuiXP 而设**（实测停用 OneuiXP 不裁、启用就裁，而前两项都没被
+                //   改过，OneuiXP 的 dex 里正好有 setOutlineProvider/setClipToOutline）。
+                //   用户 2026-10-22 弃用 OneuiXP ⇒ 这段**已停用**；将来要用，
+                //   把下面四行加回来即可（boolCallCached / setClipToOutlineCached
+                //   两个辅助方法仍在，R8 会在停用期间自动剔除）。
+                // if (Boolean.TRUE.equals(boolCallCached(vg))) {
+                //     flippedOutline = true;
+                // }
+                // setClipToOutlineCached(vg, false);
                 final android.view.ViewParent up = vg.getParent();
                 if (!(up instanceof android.view.View)) {
                     break;

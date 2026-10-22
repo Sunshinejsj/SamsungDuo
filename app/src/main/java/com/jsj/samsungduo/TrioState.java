@@ -1682,15 +1682,27 @@ final class TrioState {
 
     /** 状态栏图标应画成的颜色。**只用本实例自己的信息**，绝不借别的界面。 */
     int foreground() {
-        // ★ 修复（10.0 回归）：取值链里必须保留"本实例从 onDarkChanged 拿到的 mIconTint"，
-        //   并且**不能**再退回跨实例的全局色 sLastGoodTint ——
-        //   那一退，下拉/锁屏探针一旦读不到就直接抄状态栏的颜色，
-        //   表现就是"状态栏深色则下拉锁屏也深色、状态栏浅色才变浅色"。
-        //   现在的顺序：探针 → 本实例回调 → 本实例上一次 → 本界面自己的背景 → 系统主题兜底。
+        // ★ 10-22 三修（黄色壁纸实机日志铁证）：
+        //   tint[PhoneStatusBarView]: iconTint=b30c0c0c night=true src=sLastGood -> ff454545
+        //   onDarkChanged 回调写进 mIconTint 的 b30c0c0c 就是系统调度器推给原生图标
+        //   （网速/电池/信号）的**同一个值**（v58 反汇编实证的权威路径）——
+        //   它随壁纸明暗自适应（黄壁纸上暗色、深色模式下白色 edffffff），才是
+        //   "原生状态栏图标取色"的正路。但它此前**只出现在诊断日志里**，
+        //   取值链实际是 探针→bg→sLastGood→mode：探针撞 TextView/近黑被拒后
+        //   回落旧缓存，就是用户实测的「一会黑一会白」「深色模式原生没那么黑」。
+        //   新顺序：回调 → 探针 → 本界面背景 → 系统主题兜底。
+        //   探针降级给收不到回调的下拉/锁屏用（它们的 mIconTint 恒 0）。
         String src = "fallback";
-        int t = liveTintFromHost();
-        if (t != 0) {
-            src = "probe";
+        int t = 0;
+        if (mIconTint != 0) {
+            t = mIconTint;
+            src = "callback";
+        }
+        if (t == 0) {
+            t = liveTintFromHost();
+            if (t != 0) {
+                src = "probe";
+            }
         }
         if (t == 0) {
             // ★ v99（9.9 原样）：本实例至今没读到过自己的真实色时，用"最近任一实例读到的
@@ -1710,9 +1722,18 @@ final class TrioState {
                 src = "mode";
             }
         }
-        // ★ v82b：浅色背景下系统下发到原生图标的 tint 自带 alpha（半透明灰），
-        //   直接拿来画会让 5G/数字/图标发灰、显得细。强制不透明，保留系统色相、实心显示。
-        t = (t & 0x00FFFFFF) | 0xFF000000;
+        // ★ 10-22 四修（实机对比原生图标）：系统 onDarkChanged 回调下发的 tint
+        //   本身**自带 alpha**（如 b3000000=70%黑、edfefefe=93%白、caa7a7a7=79%灰），
+        //   原生图标正是带着这个 alpha 渲染的——半透明黑叠在状态栏背景上比纯黑浅一截。
+        //   旧 v82b 把 alpha 强制锤成 0xFF 不透明，导致我们的墨色比原生"深"
+        //   （用户实机反馈"黑色更深一点，自带图标没这么深的黑"）；胶囊与圆环都走
+        //   这条 foreground() 链，所以一起中招。
+        //   修法：系统来源（callback / probe / sLastGood，读到的就是原生图标真实 tint
+        //   含 alpha）的 alpha 原样保留直接交给渲染层；只有本模块自己合成的兜底色
+        //   （bg / mode，hostThemeTint 与 nightMode 返回的就是 0xFF000000/0xFFFFFFFF，
+        //   本就不透明）才需要实心——它们已是不透明，无需再处理。
+        //   暗轨/非激活格走 withAlpha(fg, a.trackAlpha) 只取 RGB、用设计值做透明度，
+        //   与 fg 自身的 alpha 无关，故本改不动暗轨观感。
         if (t != 0) {
             noteTint(t, src);
             return t;

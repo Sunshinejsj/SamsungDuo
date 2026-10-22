@@ -103,6 +103,10 @@
     <string name="capsule_bolt_gap">On ring</string>
     <string name="capsule_bolt_gap_pair">On ring + companion</string>
     <string name="capsule_bolt_centre_pair">Right + companion</string>
+    <string name="capsule_shape_title">Capsule shape</string>
+    <string name="capsule_shape_summary">Samsung style has squarer corners (matches S25U).</string>
+    <string name="capsule_shape_normal">Regular</string>
+    <string name="capsule_shape_samsung">Samsung style</string>
     <string name="glyph_left_offset_title">Group left offset</string>
     <string name="glyph_left_offset_summary">Distance from the native status bar icons to the trio icon. Default 0, range -8.0 to +8.0dp.</string>
 

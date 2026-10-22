@@ -78,6 +78,8 @@ class SettingsRepository(context: Context) {
     fun setCapsuleRight(value: Int) = writeInt(Prefs.KEY_CAPSULE_RIGHT, value)
     fun setCapsuleGap(value: Int) = writeInt(Prefs.KEY_CAPSULE_GAP, value)
     fun setCapsuleBoltPos(value: Int) = writeInt(Prefs.KEY_CAPSULE_BOLT_POS, value)
+    /** ★ 按钮4 胶囊形状：0 常规体育场 / 1 三星风格（S25U 超椭圆端帽）。 */
+    fun setCapsuleShape(value: Int) = writeInt(Prefs.KEY_CAPSULE_SHAPE, value)
     /** 0 = the signal readings stay inside the ring, 1 = they move outside it. */
     fun setSignalMode(value: Int) = writeInt(key(Prefs.KEY_SIGNAL_MODE), value)
     fun setStackedSignal(value: Boolean) = writeBoolean(Prefs.KEY_STACKED_SIGNAL, value)

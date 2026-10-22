@@ -132,6 +132,11 @@ public final class TrioAppearance {
     public final int capsuleRight;
     public final int capsuleGap;
     public final int capsuleBoltPos;
+    /**
+     * ★ 按钮4 胶囊形状：{@link Prefs#CAP_SHAPE_NORMAL}=常规体育场 / {@link Prefs#CAP_SHAPE_SAMSUNG}=三星风格超椭圆端帽。
+     * 只改基础模板轮廓，不动任何布局/取色/落位逻辑。
+     */
+    public final int capsuleShape;
 
     public final int ringStroke;
     public final int arcStroke;
@@ -206,6 +211,7 @@ public final class TrioAppearance {
         capsuleRight = c.capsuleRight;
         capsuleGap = c.capsuleGap;
         capsuleBoltPos = c.capsuleBoltPos;
+        capsuleShape = c.capsuleShape;
 
         ringStroke = c.ringStroke;
         arcStroke = c.arcStroke;

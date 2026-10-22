@@ -867,6 +867,24 @@ private fun LazyListScope.generalTab(
                         update { repo -> repo.setCapsuleBoltPos(capsuleBoltModes[index].first) }
                     },
                 )
+                // ★ 按钮4 胶囊形状（2026-10-22）：只改基础模板轮廓，不动任何布局逻辑。
+                //   常规 = 体育场（原样）；三星风格 = S25U 屏幕圆角同语言的超椭圆端帽。
+                val capsuleShapeModes = listOf(
+                    Prefs.CAP_SHAPE_NORMAL to R.string.capsule_shape_normal,
+                    Prefs.CAP_SHAPE_SAMSUNG to R.string.capsule_shape_samsung,
+                )
+                OverlayDropdownPreference(
+                    items = capsuleShapeModes.map { stringResource(it.second) },
+                    selectedIndex = capsuleShapeModes
+                        .indexOfFirst { it.first == settings.capsuleShape }.coerceAtLeast(0),
+                    title = stringResource(R.string.capsule_shape_title),
+                    summary = stringResource(R.string.capsule_shape_summary),
+                    insideMargin = SettingsItemMargin,
+                    enabled = a.glyph,
+                    onSelectedIndexChange = { index ->
+                        update { repo -> repo.setCapsuleShape(capsuleShapeModes[index].first) }
+                    },
+                )
             }
             // ★ 胶囊专属：圆环的「闪电 + 同伴」搬进胶囊后的两个位置选择。
             //   右槽＝圆环环心，顶部开口＝圆环 12 点缺口；闪电只画一次，

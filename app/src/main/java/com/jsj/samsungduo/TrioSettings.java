@@ -131,6 +131,8 @@ public final class TrioSettings {
     public int capsuleGap;
     /** 按钮3 充电闪电位置：{@link Prefs#CAP_BOLT_HIDDEN} 等。 */
     public int capsuleBoltPos;
+    /** 按钮4 胶囊形状：{@link Prefs#CAP_SHAPE_NORMAL} / {@link Prefs#CAP_SHAPE_SAMSUNG}。 */
+    public int capsuleShape;
 
     public int ringStroke;
     public int arcStroke;
@@ -257,6 +259,7 @@ public final class TrioSettings {
         s.capsuleRight = Prefs.DEF_CAPSULE_RIGHT;
         s.capsuleGap = Prefs.DEF_CAPSULE_GAP;
         s.capsuleBoltPos = Prefs.DEF_CAPSULE_BOLT_POS;
+        s.capsuleShape = Prefs.DEF_CAPSULE_SHAPE;
 
         s.ringStroke = Prefs.DEF_RING_STROKE;
         s.arcStroke = Prefs.DEF_ARC_STROKE;
@@ -366,6 +369,9 @@ public final class TrioSettings {
         s.capsuleBoltPos = Prefs.clamp(
                 p.getInt(Prefs.KEY_CAPSULE_BOLT_POS, Prefs.DEF_CAPSULE_BOLT_POS),
                 Prefs.MIN_CAPSULE_BOLT_POS, Prefs.MAX_CAPSULE_BOLT_POS);
+        s.capsuleShape = Prefs.clamp(
+                p.getInt(Prefs.KEY_CAPSULE_SHAPE, Prefs.DEF_CAPSULE_SHAPE),
+                Prefs.MIN_CAPSULE_SHAPE, Prefs.MAX_CAPSULE_SHAPE);
 
         s.ringStroke = Prefs.clamp(
                 p.getInt(Prefs.capKeyAware(Prefs.KEY_RING_STROKE, capsule), Prefs.DEF_RING_STROKE),
@@ -557,6 +563,7 @@ public final class TrioSettings {
         s.capsuleRight = capsuleRight;
         s.capsuleGap = capsuleGap;
         s.capsuleBoltPos = capsuleBoltPos;
+        s.capsuleShape = capsuleShape;
 
         s.ringStroke = ringStroke;
         s.arcStroke = arcStroke;
@@ -636,6 +643,7 @@ public final class TrioSettings {
             case Prefs.KEY_CAPSULE_RIGHT: capsuleRight = src.capsuleRight; return true;
             case Prefs.KEY_CAPSULE_GAP: capsuleGap = src.capsuleGap; return true;
             case Prefs.KEY_CAPSULE_BOLT_POS: capsuleBoltPos = src.capsuleBoltPos; return true;
+            case Prefs.KEY_CAPSULE_SHAPE: capsuleShape = src.capsuleShape; return true;
             case Prefs.KEY_RING_STROKE: ringStroke = src.ringStroke; return true;
             case Prefs.KEY_ARC_STROKE: arcStroke = src.arcStroke; return true;
             case Prefs.KEY_VALUE_SIZE: valueSize = src.valueSize; return true;
@@ -733,6 +741,9 @@ public final class TrioSettings {
         s.capsuleBoltPos = Prefs.clamp(
                 bundle.getInt(Prefs.KEY_CAPSULE_BOLT_POS, Prefs.DEF_CAPSULE_BOLT_POS),
                 Prefs.MIN_CAPSULE_BOLT_POS, Prefs.MAX_CAPSULE_BOLT_POS);
+        s.capsuleShape = Prefs.clamp(
+                bundle.getInt(Prefs.KEY_CAPSULE_SHAPE, Prefs.DEF_CAPSULE_SHAPE),
+                Prefs.MIN_CAPSULE_SHAPE, Prefs.MAX_CAPSULE_SHAPE);
 
         s.ringStroke = Prefs.clamp(
                 bundle.getInt(Prefs.capKeyAware(Prefs.KEY_RING_STROKE, capsule), Prefs.DEF_RING_STROKE),
@@ -906,6 +917,7 @@ public final class TrioSettings {
         b.putInt(Prefs.KEY_CAPSULE_RIGHT, capsuleRight);
         b.putInt(Prefs.KEY_CAPSULE_GAP, capsuleGap);
         b.putInt(Prefs.KEY_CAPSULE_BOLT_POS, capsuleBoltPos);
+        b.putInt(Prefs.KEY_CAPSULE_SHAPE, capsuleShape);
 
         b.putInt(Prefs.capKeyAware(Prefs.KEY_RING_STROKE, capsule), ringStroke);
         b.putInt(Prefs.capKeyAware(Prefs.KEY_ARC_STROKE, capsule), arcStroke);
@@ -990,6 +1002,7 @@ public final class TrioSettings {
                 && capsuleRight == s.capsuleRight
                 && capsuleGap == s.capsuleGap
                 && capsuleBoltPos == s.capsuleBoltPos
+                && capsuleShape == s.capsuleShape
                 && ringStroke == s.ringStroke
                 && arcStroke == s.arcStroke
                 && valueSize == s.valueSize

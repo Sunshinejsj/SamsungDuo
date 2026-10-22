@@ -596,6 +596,14 @@ final class TrioGeometry {
     static final float CAP_RADIUS = (CAP_BOTTOM - CAP_TOP) * 0.5f;
 
     /**
+     * ★ 三星风格胶囊端帽：超椭圆指数 n（squircle）。圆心/宽高与常规端帽完全一致，
+     * 仅把四分之一圆换成 {@code |x/r|^n + |y/r|^n = 1}：n=2 退化为原半圆（体育场），
+     * n 越大端部越"方"、直线段延伸更长、曲率从 0 平滑增大再回落（与 S25U 屏幕圆角同语言）。
+     * 实机先 n=3.0，用户实测端部过方、拐角处出现楔形缝，改回 n=2.5（L63）。
+     */
+    static final float CAP_SHAPE_SAMSUNG_N = 2.5f;
+
+    /**
      * The outline's thickness, as a fraction of {@code ringStroke}. The
      * reference draws it at 12.6% of the capsule's height; ringStroke defaults
      * to 14, so this factor lands there. Kept as a ratio so the stroke slider

@@ -697,6 +697,21 @@ public final class Prefs {
     public static final int MIN_CAPSULE_BOLT_POS = CAP_BOLT_HIDDEN;
     public static final int MAX_CAPSULE_BOLT_POS = CAP_BOLT_CENTRE_PAIR;
 
+    // 按钮4 胶囊形状（2026-10-22）：只改基础模板的轮廓几何，其余逻辑（三车道/
+    // 开口退让/取色）全部不动。
+    /** 按钮4 胶囊形状：常规胶囊 —— 体育场形，圆角 = 半高（上游 HyperDuo 同款）。 */
+    public static final int CAP_SHAPE_NORMAL = 0;
+    /**
+     * 按钮4 胶囊形状：三星风格 —— 圆角匹配 Galaxy S25 Ultra 屏幕圆角比例。
+     * 依据官方规格反解：6.9"(174.2mm) 完整矩形 vs 6.8"(172.2mm) 含圆角、3120x1440
+     * ⇒ r ≈ 3.1mm ≈ 61px(@501dpi) ≈ 19.5dp，r/屏高 ≈ 4.25%（用户 10-22 选定）。
+     */
+    public static final int CAP_SHAPE_SAMSUNG = 1;
+    public static final String KEY_CAPSULE_SHAPE = "capsule_shape";
+    public static final int DEF_CAPSULE_SHAPE = CAP_SHAPE_NORMAL;
+    public static final int MIN_CAPSULE_SHAPE = CAP_SHAPE_NORMAL;
+    public static final int MAX_CAPSULE_SHAPE = CAP_SHAPE_SAMSUNG;
+
     public static final int DEF_VALUE_SIZE = 36;
     /**
      * 700 is {@code Typeface.BOLD}, the weight the reference glyph uses. The

@@ -121,8 +121,15 @@ public final class TrioHooks {
         // ★ v58：真正的取色路径（浅色背景下和别的图标一起变深）。
         final int darkHooks = hookDarkReceivers(module, cl);
         n += darkHooks;
-        n += hookClipGuards(module, cl);
-        n += hookWindowRootClip(module, cl);
+        // ★ OneuiXP 专用补丁：**已停用**（用户 2026-10-22 弃用 OneuiXP）。
+        //   这两组 hook 纯粹是"防御别的模块"的：别的模块（含 OneuiXP）会周期性把
+        //   状态栏祖先的 clipChildren/clipToPadding 设回 true（OneuiXP 甚至反射
+        //   直写 mClipChildren、并用 setClipToOutline 做轮廓裁剪），我们图标上下
+        //   溢出随即被裁，所以曾装 setter 拦截 + 窗口根绘制兜底把它按回 false。
+        //   现在没有别的模块跟我们抢裁剪，它们只是多余的全局拦截（还会拦下系统
+        //   自己设的 clip=true），故不装。将来要用 OneuiXP，把下面两行加回来即可：
+        //       n += hookClipGuards(module, cl);
+        //       n += hookWindowRootClip(module, cl);
         log(LOG_INFO, "Samsung hooks installed: " + n
                 + " (bar=" + barHooks
                 + ", shade=" + shadeHooks
@@ -130,7 +137,6 @@ public final class TrioHooks {
                 + ", tint=" + (n - barHooks - shadeHooks - darkHooks) + ")");
         return n;
     }
-
     // ------------------------------------------------------------------
     // 0) 下拉面板（通知栏/快捷设置）的状态栏图标区。
     //    反编译三星 SystemUI（One UI 8）确认：
