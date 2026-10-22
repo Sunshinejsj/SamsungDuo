@@ -27,10 +27,12 @@ package com.jsj.samsungduo;
  */
 public final class TrioAppearance {
 
-    /** {@link Prefs#STYLE_RING} or {@link Prefs#STYLE_RECT}. */
+    /** {@link Prefs#STYLE_RING} or {@link Prefs#STYLE_RECT} or {@link Prefs#STYLE_CAPSULE}. */
     public final int style;
     /** True when {@link #style} is the rectangular arrangement. */
     public final boolean rect;
+    /** ★ 胶囊移植：True when {@link #style} is the capsule arrangement. */
+    public final boolean capsule;
     /** The master switch. False hands every slot back to MIUI. */
     public final boolean glyph;
     /** The Wi-Fi arcs are wanted; ink also needs a signal - see {@link #wifiInk}. */
@@ -121,6 +123,16 @@ public final class TrioAppearance {
     /** ★ v104：组合图标里 5GA 的 "A" 相对主字号的百分比（50–100）。 */
     public final int chargeSuffixAScale;
 
+    /**
+     * ★ 胶囊三按钮显式控制（2026-10-21 用户拍板）。圆环/矩形不用这三个字段
+     * （它们继续走 chargePairMode 派生）；胶囊在 {@link Capsule} 里按它们显式落位。
+     * 按钮1（右列，恒显）：电量 / 信号；按钮2（缺口）：隐藏 / 闪电 / 电量 / 信号；
+     * 按钮3（充电闪电）：隐藏 / 缺口独立 / 缺口+同伴 / 右侧+同伴。
+     */
+    public final int capsuleRight;
+    public final int capsuleGap;
+    public final int capsuleBoltPos;
+
     public final int ringStroke;
     public final int arcStroke;
     public final int trackAlpha;
@@ -152,6 +164,7 @@ public final class TrioAppearance {
     private TrioAppearance(TrioSettings c) {
         style = c.trioStyle;
         rect = c.trioStyle == Prefs.STYLE_RECT;
+        capsule = c.trioStyle == Prefs.STYLE_CAPSULE;
         glyph = c.enabled;
         wifi = c.showWifi;
         mobile = c.showMobile;
@@ -189,6 +202,10 @@ public final class TrioAppearance {
         chargeValueSize = c.chargeValueSize;
         chargeSignalSize = c.chargeSignalSize;
         chargeSuffixAScale = c.chargeSuffixAScale;
+
+        capsuleRight = c.capsuleRight;
+        capsuleGap = c.capsuleGap;
+        capsuleBoltPos = c.capsuleBoltPos;
 
         ringStroke = c.ringStroke;
         arcStroke = c.arcStroke;
@@ -479,10 +496,13 @@ public final class TrioAppearance {
             // even when nothing else claimed the notch: a closed ring would draw
             // its arc straight through the top row.
             gapUsed = boltInGap || wifiInGap || valueInGap || typeInGap || dual;
-            // ★ 信号已经被组合图标带走时（pairWifi / pairType），这里必须让路 ——
-            //   否则同一组弧线会被画两遍：缺口那一排里一遍、原本的位置又一遍，
-            //   两者叠在一起（用户实测「圈上 + 信号开」和「圈内」都叠）。
-            drawWifi = a.wifi && (!a.centreValue || wifiInGap) && !pairWifi;
+            // ★ Wi-Fi 弧只画一处：被组合图标带走（pairWifi）时让路，否则就画。
+            //   画在哪由 wifiInGap 决定（缺口 or 环心），不是"画不画"的条件——
+            //   旧式子 `!wifiInGap` 会在「电量数字居中」开着且不充电时把信号整段
+            //   抹掉：那时 wifiInGap 为真（缺口归信号）、却没有同伴成对去带它，
+            //   于是环心不画、缺口也没人画 ⇒ 信号凭空消失（用户实测"缺口的信号没了"）。
+            //   正确条件：只要没被 pair 带走就画，位置交给 wifiInGap。
+            drawWifi = a.wifi && !pairWifi;
             drawValue = valueInCentre || valueInGap;
         }
     }
@@ -529,6 +549,134 @@ public final class TrioAppearance {
             // Same plug-not-bolt rule as the ring: a charger on screen means one
             // reading, and the bar's colour already carries it.
             dual = a.dualSimRows(wifi, charging, sims);
+        }
+    }
+
+    /** The capsule arrangement's slot assignment for one frame. */
+    public Capsule capsule(int level, boolean charging, int wifiLevel, String mobileType, int sims) {
+        return new Capsule(this, level, charging, wifiLevel, mobileType, sims);
+    }
+
+    /**
+     * 胶囊三车道：TOP=缺口开口 / CENTRE=环心右列 / BOTTOM=底部信号点。
+     * 与上游 HyperDuo v1.7 对齐。
+     */
+    public enum Zone { TOP, CENTRE, BOTTOM }
+
+    /**
+     * ★ 胶囊 = 圆环，只是外框形状不同 —— 但落位由**三按钮显式控制**（2026-10-21
+     * 用户拍板），不再走圆环 chargePair 派生：
+     *
+     * <ul>
+     *   <li>按钮1（右列，恒显、无隐藏）：电量 / 信号；</li>
+     *   <li>按钮2（缺口）：隐藏 / 闪电 / 电量 / 信号；</li>
+     *   <li>按钮3（充电闪电位置）：隐藏 / 缺口独立 / 缺口+同伴 / 右侧+同伴。</li>
+     * </ul>
+     *
+     * <p>★ 同伴 = 按钮1没选的那件；缺口与右列绝不出现同一组件。
+     * ★ 右侧永远要有东西（右侧是前提）：按钮3 两种同伴档右列照常显示按钮1。
+     * ★ 「信号」件内容 = 有 Wi-Fi 时画 Wi-Fi 弧（圆环 wifi 优先），否则 5G/5GA。
+     * ★ 信号点（双卡）完全照圆环 {@code dualSimRows}：充电 / 有 Wi-Fi 时只留卡一。
+     *
+     * <p>与上游对齐：每件东西只落在一条车道里（{@link #parts}），天然不重叠
+     * —— 这正是修掉「WIFI 压电量数字」的关键。
+     *
+     * <p>Immutable.
+     */
+    public static final class Capsule {
+        /** 圆环那套决策，信号点行仍复用它。 */
+        public final Ring ring;
+        /** 三车道各持一件（{@code Prefs.PART_NONE}=空），索引按 {@link Zone#ordinal()}。 */
+        public final int[] parts = new int[Prefs.ZONE_COUNT];
+        /** 三车道哪条载信号点行，索引按 {@link Zone#ordinal()}。 */
+        public final boolean[] dotBands = new boolean[Prefs.ZONE_COUNT];
+        /** 任一车道载点行 ⇒ 画点。 */
+        public final boolean dots;
+        /** 双卡：两行点各属一卡。 */
+        public final boolean dual;
+        /** 按钮3=缺口+同伴：TOP 车道画「闪电+同伴」整组。 */
+        public final boolean pairTop;
+        /** 按钮3=右侧+同伴：CENTRE 车道画「闪电+按钮1那件」整组。 */
+        public final boolean pairCentre;
+        /** 成组时跟闪电并肩的那一件（缺口档=按钮1没选的；右列档=按钮1那件）。 */
+        public final int pairMate;
+
+        private Capsule(TrioAppearance a, int level, boolean charging, int wifiLevel,
+                        String mobileType, int sims) {
+            ring = a.ring(level, charging, wifiLevel, mobileType, sims);
+            final boolean boltOn = charging && a.drawsBolt();
+            final int bp = a.capsuleBoltPos;
+            final boolean boltHidden = !boltOn || bp == Prefs.CAP_BOLT_HIDDEN;
+
+            // 「信号」件的内容：有 Wi-Fi 画 Wi-Fi 弧（与圆环 wifi 优先于 type 一致），
+            // 否则网络类型 5G/5GA。
+            final boolean signalIsWifi = a.wifiInk(wifiLevel);
+            final int signalPart = signalIsWifi ? Prefs.PART_WIFI : Prefs.PART_TYPE;
+            // 按钮1：右列恒显那件。总开关关掉该组件时退到另一件 —— 右侧永远要有东西。
+            int rightPart = (a.capsuleRight == Prefs.CAP_RIGHT_VALUE)
+                    ? Prefs.PART_VALUE : signalPart;
+            if (rightPart == Prefs.PART_VALUE && !a.value) rightPart = signalPart;
+            if (rightPart == Prefs.PART_TYPE && !a.mobile) rightPart = Prefs.PART_VALUE;
+            if (rightPart == Prefs.PART_WIFI && !a.wifi) rightPart = Prefs.PART_VALUE;
+            // 同伴 = 按钮1没选的那件（缺口档用）。
+            final int matePart = (a.capsuleRight == Prefs.CAP_RIGHT_VALUE)
+                    ? signalPart : Prefs.PART_VALUE;
+
+            // ---- TOP（缺口）----
+            int top = Prefs.PART_NONE;
+            boolean topPair = false, centrePair = false;
+            int mate = Prefs.PART_NONE;
+
+            // 按钮2：缺口基础内容。充电时闪电位置归按钮3，缺口=闪电只有充电才显示；
+            // 充电时按钮2 的电量/信号始终生效（此前被按钮3 整段覆盖 ⇒ 充电全失效）。
+            int gapContent = Prefs.PART_NONE;
+            final int gap = a.capsuleGap;
+            if (gap == Prefs.CAP_GAP_VALUE && a.capsuleRight != Prefs.CAP_RIGHT_VALUE) {
+                gapContent = Prefs.PART_VALUE;
+            } else if (gap == Prefs.CAP_GAP_SIGNAL && a.capsuleRight != Prefs.CAP_RIGHT_SIGNAL) {
+                gapContent = signalPart;
+            }
+            // ★ CAP_GAP_BOLT（缺口=闪电）不在这里产内容：用户规则 —— 缺口选「闪电」
+            //   **只有充电才显示**，不充电什么都不显示。旧代码在这写成
+            //   `gap == CAP_GAP_BOLT && !boltOn → PART_BOLT`（不充电才放），逻辑整个反了，
+            //   导致不充电往缺口落一颗白色闪电。充电时的落位由下面的按钮3 分支统一处理。
+
+            if (!boltHidden && (bp == Prefs.CAP_BOLT_GAP
+                    || bp == Prefs.CAP_BOLT_GAP_PAIR)) {
+                // 闪电进缺口：缺口 = 闪电 + 按钮2 内容（按钮2=隐藏则仅闪电）。
+                top = Prefs.PART_BOLT;
+                topPair = gapContent != Prefs.PART_NONE;
+                mate = topPair ? gapContent : Prefs.PART_NONE;
+            } else if (gapContent != Prefs.PART_NONE) {
+                // 闪电不进缺口（隐藏 / 右侧+同伴 / 未充电）⇒ 缺口纯按按钮2。
+                top = gapContent;
+            }
+            parts[Zone.TOP.ordinal()] = top;
+
+            // ---- CENTRE（右列，恒显）----
+            parts[Zone.CENTRE.ordinal()] = rightPart;
+            if (!boltHidden && bp == Prefs.CAP_BOLT_CENTRE_PAIR) {
+                centrePair = true;
+                mate = rightPart;   // 右侧 = 闪电 + 按钮1那件（用户：右侧为前提）
+            }
+            pairTop = topPair;
+            pairCentre = centrePair;
+            pairMate = mate;
+
+            parts[Zone.BOTTOM.ordinal()] = Prefs.PART_NONE;
+
+            // 信号点：照圆环。上排＝卡二，仅双卡行且缺口没被件占用时；下排＝卡一。
+            dotBands[Zone.TOP.ordinal()] =
+                    a.dualSimRows(a.wifiInk(wifiLevel), charging, sims)
+                            && top == Prefs.PART_NONE && !pairTop;
+            dotBands[Zone.BOTTOM.ordinal()] = a.signalDots();
+            dots = dotBands[Zone.TOP.ordinal()] || dotBands[Zone.BOTTOM.ordinal()];
+            dual = ring.dual;
+        }
+
+        /** 某车道是否载点行。 */
+        public boolean dotsIn(Zone band) {
+            return band != null && dotBands[band.ordinal()];
         }
     }
 }

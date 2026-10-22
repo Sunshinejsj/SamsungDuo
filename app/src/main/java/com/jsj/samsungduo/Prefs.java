@@ -420,6 +420,52 @@ public final class Prefs {
 
     public static final String KEY_DEBUG_LOG = "debug_log";
 
+    // ------------------------------------------------------------------ capsule namespace
+    /**
+     * ★ 胶囊（STYLE_CAPSULE）独立命名空间。
+     *
+     * <p>胶囊复用 {@link TrioAppearance.Ring} 逻辑，原本与圆环共用同一份
+     * {@link TrioSettings}，导致圆环的尺寸/位置/布局类设置会污染胶囊（用户实测
+     * 5G 等位置被带偏）。现在把这些字段按样式隔离：胶囊用 {@code "cap_"} 前缀键，
+     * 圆环/矩形用原键。规则 = 原键前拼 {@code "cap_"}，可逆。
+     *
+     * <p>仅 {@link #STYLE_KEYS} 里的字段受隔离；其余（总开关、显示哪些组件、
+     * 颜色、防烧屏、调试日志）三种样式共享，不走前缀。
+     */
+    public static final java.util.Set<String> STYLE_KEYS = new java.util.HashSet<>(
+            java.util.Arrays.asList(
+                    "glyph_scale_pct", "glyph_left_offset_dp", "glyph_shift_dp",
+                    "ring_stroke", "arc_stroke",
+                    "value_size", "value_weight",
+                    "type_size", "out_type_size_dp", "type_suffix_scale",
+                    "out_type_margin_left_dp", "out_type_margin_right_dp", "type_weight",
+                    "out_signal_size_dp", "out_signal_margin_dp",
+                    "perf_temp", "perf_outer_margin_dp", "perf_outer_margin_right_dp",
+                    "perf_scale_pct", "perf_weight",
+                    "track_alpha",
+                    "charge_value_size", "charge_signal_size", "charge_suffix_a_scale",
+                    "mobile_type_mode", "signal_mode", "swap_wifi_value",
+                    "charge_pair_mode", "charge_signal_also"
+            ));
+
+    /** 返回某键的胶囊命名空间键：{@code "cap_" + base}。可逆，见 {@link #baseKey}。 */
+    public static String capKey(String base) {
+        return "cap_" + base;
+    }
+
+    /** 剥掉 {@code "cap_"} 前缀，找回原键；非前缀键原样返回。 */
+    public static String baseKey(String key) {
+        return key.startsWith("cap_") ? key.substring(4) : key;
+    }
+
+    /**
+     * 按当前样式返回实际要用到的键：胶囊且属于 {@link #STYLE_KEYS} 时走
+     * {@code "cap_"} 前缀，否则原键。这是读/写/广播四处统一的分支点。
+     */
+    public static String capKeyAware(String base, boolean capsule) {
+        return (capsule && STYLE_KEYS.contains(base)) ? ("cap_" + base) : base;
+    }
+
     // -------------------------------------------------------------- defaults
     public static final boolean DEF_ENABLED = true;
     public static final boolean DEF_OVERLAY = true;
@@ -465,11 +511,18 @@ public final class Prefs {
      */
     public static final int STYLE_RECT = 1;
     /**
+     * The capsule arrangement (ported from upstream v1.7): a stadium-shaped
+     * outline that IS the battery bar, the clock in a fixed left column, the
+     * bolt / Wi-Fi arcs / percentage / network type in the right-hand slot by
+     * that priority, and rows of signal dots riding the outline at 12 and 6
+     * o'clock. Fixed default layout; the editor is not ported.
+     */
+    public static final int STYLE_CAPSULE = 2;
+    /**
      * The ring, for every install that has never chosen.
      *
-     * <p>Only the styles themselves are honoured: the settings screen offers no
-     * third entry, so an unrecognised stored value degrades to the ring rather
-     * than to a blank glyph.
+     * <p>Only the styles themselves are honoured: an unrecognised stored value
+     * degrades to the ring rather than to a blank glyph.
      */
     public static final int DEF_TRIO_STYLE = STYLE_RING;
 
@@ -573,9 +626,77 @@ public final class Prefs {
     /** ★ v104：组合图标里 "A" 的大小，默认 65%，与环内 5GA 的 A 一致。 */
     public static final int DEF_CHARGE_SUFFIX_A_SCALE = 65;
 
+    // ---------------------------------------------------------------------
+    // ★ 胶囊（STYLE_CAPSULE）独立命名空间（2026-10-21 新加）。
+    //
+    // 胶囊复用 {@link TrioAppearance.Ring} 逻辑（缺口＝顶部开口、环心＝中部、
+    // 底部信号点＝下边），但尺寸/位置/布局类字段不再与圆环共用：
+    // 它们在 {@link #STYLE_KEYS} 里，读取/写入/广播时按当前样式走 {@code "cap_"} 前缀键，
+    // 与圆环（及矩形）的那份互不干扰。总开关、显示哪些组件、颜色、防烧屏、调试日志
+    // 仍三种样式共享。详见 TrioSettings 的 from / fromBundle / toBundle / applyKeyFrom
+    // 与 SettingsRepository 的几何类 setter。
+    // ---------------------------------------------------------------------
+
+
     public static final int DEF_RING_STROKE = 14;
-    /** ★ v76：WiFi 弧线粗细默认值按用户要求由 12 改为 7（范围 3–16 不变）。 */
-    public static final int DEF_ARC_STROKE = 7;
+    /** WiFi 弧线粗细默认值：v76 由 12 改 7，胶囊移植（上游 v1.7）按用户要求定为 8。 */
+    public static final int DEF_ARC_STROKE = 8;
+
+    // ---------------------------------------------------------------------
+    //  胶囊三车道零件 id（与上游 HyperDuo v1.7 对齐；SamsungDuo 仅用其中几件）
+    // ---------------------------------------------------------------------
+    public static final int PART_NONE = 0, PART_WIFI = 1, PART_MOBILE = 2,
+            PART_VALUE = 3, PART_BOLT = 4, PART_TYPE = 5, PART_CLOCK = 6;
+    public static final int PART_MAX = PART_CLOCK;
+    public static final int PART_COUNT = PART_MAX + 1;
+    /** 胶囊三车道：TOP=缺口 / CENTRE=环心右列 / BOTTOM=底部信号点。 */
+    public static final int ZONE_COUNT = 3;
+
+    // ---------------------------------------------------------------------
+    // ★ 胶囊三按钮显式控制（2026-10-21 用户拍板，替代圆环 chargePair 派生）。
+    //
+    // 基础模板 = 整圈 + 左列时钟 + 底部信号点（双卡完全照圆环 dualSimRows）。
+    // 按钮1（右列内容，恒显、无隐藏）：电量 / 信号。
+    // 按钮2（缺口内容）：隐藏 / 闪电 / 电量 / 信号。
+    // 按钮3（充电闪电位置）：隐藏 / 缺口独立 / 缺口+同伴 / 右侧+同伴。
+    // ★ 同伴 = 按钮1没选的那件；缺口与右列绝不出现同一组件。
+    // ★ 右侧永远要有东西（右侧是前提）：按钮3 的两种同伴档右列照常显示按钮1。
+    // ---------------------------------------------------------------------
+    /** 按钮1 右列：电量数字。 */
+    public static final int CAP_RIGHT_VALUE = 0;
+    /** 按钮1 右列：信号（5G/5GA 网络类型；有 Wi-Fi 时画 Wi-Fi 弧，同圆环 wifi 优先）。 */
+    public static final int CAP_RIGHT_SIGNAL = 1;
+    public static final String KEY_CAPSULE_RIGHT = "capsule_right";
+    public static final int DEF_CAPSULE_RIGHT = CAP_RIGHT_VALUE;
+    public static final int MIN_CAPSULE_RIGHT = CAP_RIGHT_VALUE;
+    public static final int MAX_CAPSULE_RIGHT = CAP_RIGHT_SIGNAL;
+
+    /** 按钮2 缺口：隐藏。 */
+    public static final int CAP_GAP_NONE = 0;
+    /** 按钮2 缺口：闪电（仅充电时有意义）。 */
+    public static final int CAP_GAP_BOLT = 1;
+    /** 按钮2 缺口：电量数字（右列选了电量时此选项禁用，避免重复）。 */
+    public static final int CAP_GAP_VALUE = 2;
+    /** 按钮2 缺口：信号（右列选了信号时此选项禁用，避免重复）。 */
+    public static final int CAP_GAP_SIGNAL = 3;
+    public static final String KEY_CAPSULE_GAP = "capsule_gap";
+    public static final int DEF_CAPSULE_GAP = CAP_GAP_NONE;
+    public static final int MIN_CAPSULE_GAP = CAP_GAP_NONE;
+    public static final int MAX_CAPSULE_GAP = CAP_GAP_SIGNAL;
+
+    /** 按钮3 充电闪电：不显示。 */
+    public static final int CAP_BOLT_HIDDEN = 0;
+    /** 按钮3 充电闪电：缺口独立显示。 */
+    public static final int CAP_BOLT_GAP = 1;
+    /** 按钮3 充电闪电：缺口与同伴（按钮1没选的那件）同时显示。 */
+    public static final int CAP_BOLT_GAP_PAIR = 2;
+    /** 按钮3 充电闪电：右侧与按钮1那件同时显示。 */
+    public static final int CAP_BOLT_CENTRE_PAIR = 3;
+    public static final String KEY_CAPSULE_BOLT_POS = "capsule_bolt_pos";
+    public static final int DEF_CAPSULE_BOLT_POS = CAP_BOLT_GAP;
+    public static final int MIN_CAPSULE_BOLT_POS = CAP_BOLT_HIDDEN;
+    public static final int MAX_CAPSULE_BOLT_POS = CAP_BOLT_CENTRE_PAIR;
+
     public static final int DEF_VALUE_SIZE = 36;
     /**
      * 700 is {@code Typeface.BOLD}, the weight the reference glyph uses. The
@@ -869,7 +990,7 @@ public final class Prefs {
     public static final int MAX_MOBILE_TYPE_MODE = MOBILE_TYPE_OUT_RING;
 
     public static final int MIN_TRIO_STYLE = STYLE_RING;
-    public static final int MAX_TRIO_STYLE = STYLE_RECT;
+    public static final int MAX_TRIO_STYLE = STYLE_CAPSULE;
 
     public static final int MIN_SIGNAL_MODE = SIGNAL_IN_RING;
     public static final int MAX_SIGNAL_MODE = SIGNAL_OUT_RING;

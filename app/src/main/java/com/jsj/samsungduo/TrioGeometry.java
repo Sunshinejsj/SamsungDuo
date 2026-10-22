@@ -572,6 +572,483 @@ final class TrioGeometry {
         return boltOffsetY() + RECT_BOLT_DY;
     }
 
+    // ---------------------------------------------------- capsule arrangement
+    //
+    // Ported from upstream HyperDuo v1.7.1's capsule (style 2): a stadium-shaped
+    // outline IS the battery bar, the clock sits in a fixed left column, the
+    // right-hand slot carries the charging bolt / Wi-Fi arcs / percentage /
+    // network type by that priority, and two rows of four signal dots ride the
+    // outline's centreline at 12 and 6 o'clock. Fixed default layout only - the
+    // editor/Zones machinery is deliberately not ported.
+    //
+    // Same 120-based design space; the capsule is 2.34:1 wide, so CAP_RIGHT
+    // runs past 120 and the host view must answer onMeasure with the width this
+    // aspect asks for (see capHostWidthPx).
+
+    /** Outer bounds of the capsule outline, in design units. */
+    static final float CAP_LEFT = 1.0f;
+    /** Right edge: the reference's own 2.34:1 aspect. The height never moves. */
+    static final float CAP_RIGHT = 139.0f;
+    static final float CAP_TOP = 1.0f;
+    static final float CAP_BOTTOM = 60.0f;
+
+    /** Corner radius: half the height, which makes the outline a stadium. */
+    static final float CAP_RADIUS = (CAP_BOTTOM - CAP_TOP) * 0.5f;
+
+    /**
+     * The outline's thickness, as a fraction of {@code ringStroke}. The
+     * reference draws it at 12.6% of the capsule's height; ringStroke defaults
+     * to 14, so this factor lands there. Kept as a ratio so the stroke slider
+     * still means something in this arrangement.
+     */
+    static final float CAP_STROKE_RATIO = 0.53f;
+
+    /** Radius of one signal dot, and the pitch between their centres. */
+    static final float CAP_DOT_R = 3.7f;
+    static final float CAP_DOT_PITCH = 10.9f;
+
+    /** Centre x of the four-dot row: the capsule's own centre. */
+    static final float CAP_DOT_CX = (CAP_LEFT + CAP_RIGHT) * 0.5f;
+
+    /**
+     * The clear space the stroke leaves on each side of a dot row, as a
+     * fraction of the capsule's path height. 9% against the reference's 6.67%.
+     * Measured against the PATH rather than the ink height so the clearance
+     * does not move when the stroke slider moves.
+     */
+    static final float CAP_DOT_CLEARANCE_RATIO = 0.09f;
+
+    /** The clear space on one side of a dot row, in design units. */
+    static float capDotClearance() {
+        return CAP_DOT_CLEARANCE_RATIO * (CAP_BOTTOM - CAP_TOP);
+    }
+
+    /**
+     * Half the horizontal span of one dot row: how far the outline's path is
+     * cut back at 12 and 6 o'clock. Three terms - the dots' own half-span, the
+     * clearance, and half the stroke, because the cut end inks a ROUND cap of
+     * radius stroke/2 past its endpoint.
+     */
+    static float capDotReach(float stroke) {
+        return CAP_DOT_PITCH * 1.5f + CAP_DOT_R + capDotClearance() + stroke * 0.5f;
+    }
+
+    /** The same at the default stroke, for callers with no stroke to hand. */
+    static float capDotReach() {
+        return capDotReach(Prefs.DEF_RING_STROKE * CAP_STROKE_RATIO);
+    }
+
+    /**
+     * Centre y of the top and bottom dot rows: exactly the outline's path
+     * coordinates. The stroke straddles the path, so the path's own y is the
+     * line's centre - putting the dots on the inner edge instead would hang
+     * them below the line they are set into.
+     */
+    static float capDotTopY() {
+        return CAP_TOP;
+    }
+
+    static float capDotBottomY() {
+        return CAP_BOTTOM;
+    }
+
+    /** Where the two end caps stop and the flat runs begin. */
+    static float capFlatLeft() {
+        return CAP_LEFT + CAP_RADIUS;
+    }
+
+    static float capFlatRight() {
+        return CAP_RIGHT - CAP_RADIUS;
+    }
+
+    static float capInteriorLeft(float stroke) {
+        return CAP_LEFT + stroke * 0.5f;
+    }
+
+    static float capInteriorRight(float stroke) {
+        return CAP_RIGHT - stroke * 0.5f;
+    }
+
+    /**
+     * The interior's vertical extent - the bound that matters. The two dot
+     * rows ride the outline's centreline, so anything drawn inside has to live
+     * between them.
+     */
+    static float capInteriorTop(float stroke) {
+        return CAP_TOP + stroke * 0.5f + CAP_DOT_R;
+    }
+
+    static float capInteriorBottom(float stroke) {
+        return CAP_BOTTOM - stroke * 0.5f - CAP_DOT_R;
+    }
+
+    static float capInteriorHeight(float stroke) {
+        return capInteriorBottom(stroke) - capInteriorTop(stroke);
+    }
+
+    static float capInteriorCy(float stroke) {
+        return (capInteriorTop(stroke) + capInteriorBottom(stroke)) * 0.5f;
+    }
+
+    /** The gap the two readings keep between each other. */
+    static final float CAP_TEXT_GAP = 6f;
+
+    /**
+     * The margin a reading keeps from the outline's inner edge, as a fraction
+     * of the capsule's height (about 8.6%, read off the reference).
+     */
+    static final float CAP_TEXT_INSET_RATIO = 0.086f;
+
+    /** How wide a reading may be inside a column of {@code slotWidth}. */
+    static float capTextClearWidth(float stroke, float slotWidth, int suffixPercent) {
+        return Math.max(1f, slotWidth - capTextInset() * 2f - stroke);
+    }
+
+    static float capTextInset() {
+        return CAP_TEXT_INSET_RATIO * (CAP_BOTTOM - CAP_TOP);
+    }
+
+    static float capTextLeft(float stroke) {
+        return capInteriorLeft(stroke) + capTextInset();
+    }
+
+    static float capTextRight(float stroke) {
+        return capInteriorRight(stroke) - capTextInset();
+    }
+
+    /**
+     * Natural width of each reading per unit of font size, measured off the
+     * platform's own metrics: "19:41" is 2.52 units wide per unit of size and
+     * "100" is 1.68. Their ratio divides the two slots - not a half.
+     */
+    static final float CAP_TIME_TEXT_PER_UNIT = 2.52f;
+    static final float CAP_VALUE_TEXT_PER_UNIT = 1.68f;
+
+    /** The share of the readings' width the time takes; the rest goes right. */
+    static final float CAP_TIME_WIDTH_SHARE =
+            CAP_TIME_TEXT_PER_UNIT / (CAP_TIME_TEXT_PER_UNIT + CAP_VALUE_TEXT_PER_UNIT);
+
+    /** The width the two readings share, once the gap between them is out. */
+    static float capReadingsWidth(float stroke) {
+        return capTextRight(stroke) - capTextLeft(stroke) - CAP_TEXT_GAP;
+    }
+
+    /** Usable width of the left-hand slot, where the time is drawn. */
+    static float capTimeSlotWidth(float stroke) {
+        return capReadingsWidth(stroke) * CAP_TIME_WIDTH_SHARE;
+    }
+
+    /** Usable width of the right-hand slot: number, arcs, bolt or type. */
+    static float capValueSlotWidth(float stroke) {
+        return capReadingsWidth(stroke) * (1f - CAP_TIME_WIDTH_SHARE);
+    }
+
+    /** Centre of the left-hand slot: the time's own place. */
+    static float capLeftCx(float stroke) {
+        return capTextLeft(stroke) + capTimeSlotWidth(stroke) * 0.5f;
+    }
+
+    /** Centre of the right-hand slot: the percentage, the arcs or the bolt. */
+    static float capRightCx(float stroke) {
+        return capTextRight(stroke) - capValueSlotWidth(stroke) * 0.5f;
+    }
+
+    /**
+     * Where a line of digits sits, so its cap height is centred in the
+     * interior: half the cap above and half below the interior's own middle.
+     */
+    static float capTextBaseline(float stroke, float size) {
+        return capInteriorCy(stroke) + size * CAP_HEIGHT_RATIO * 0.5f;
+    }
+
+    /**
+     * How tall a reading may be, as a fraction of the interior. A backstop,
+     * not the binding bound - the width fit decides the type first.
+     */
+    static final float CAP_TEXT_HEIGHT_RATIO = 0.82f;
+
+    /**
+     * The requested reading size, as a multiple of {@code valueSize}: the
+     * reference draws text whose cap height is 26.5% of the capsule's height,
+     * and an em is that cap height divided by {@link #CAP_HEIGHT_RATIO}.
+     */
+    static final float CAP_TEXT_SCALE = 0.265f * CAP_BOTTOM / (CAP_HEIGHT_RATIO * 36f);
+
+    /** Largest size the capsule's interior allows. */
+    static float capTextMaxSize(float stroke) {
+        return capInteriorHeight(stroke) * CAP_TEXT_HEIGHT_RATIO / CAP_HEIGHT_RATIO;
+    }
+
+    /**
+     * The Wi-Fi group's ink extents, quoted at the reference's own 12-unit arc
+     * stroke; the offset compensates for the stroke actually in force. The
+     * ink centre is what the arcs are optically centred on.
+     */
+    static final float W_INK_W = 54.0f;
+    /**
+     * ★ Wi-Fi 弧的**实际水平跨度**（120 设计空间）。
+     *
+     * <p>{@link #W_INK_W} 记的是叶形点那一小块的墨宽，可**弧本身**比它宽：
+     * 弧心在 W_CX、半径 W1_R，水平范围是 W_CX ± 31 = 62。算断口宽度时若用
+     * W_INK_W，弧的右边就会压到轮廓线上（用户实机截图）。
+     */
+    static final float W_ARC_W = 62.0f;
+    static final float W_INK_H = 39.65f;
+    static final float W_INK_CY = 61.13f;
+
+    /** The bolt's ink extremes, from {@code buildBolt}'s own coordinates. */
+    static final float BOLT_INK_H = 19.9f;
+    static final float BOLT_INK_CY = 12.05f;
+    /** The bolt's ink width, measured off the same path (x spans 51.3..67.6). */
+    static final float BOLT_INK_W = 16.3f;
+
+    // ------------------------------------------------- 顶部空位 / 闪电+同伴 组合
+    /**
+     * ★ 顶部那一格的<b>绝对字号上限</b>（em）—— 只是极端设置下的兜底。
+     *
+     * <p>正常情况下<b>不生效</b>：顶部那件东西用回它自己的字号（5GA 用 typeSize、
+     * 电量用 valueSize），与它在中部时一模一样。此前这里封顶 18，把 5GA 压小了一号
+     * —— 用户一眼就看出来了（"闪电在圈内时 5G 大小对的，闪电到圈上就变小了"）。
+     *
+     * <p>断口的宽度约束改由 {@code TrioRenderer} 按实际宽度兜底：装不下就整体缩小，
+     * 而不是先把字号砍小。
+     */
+    /**
+     * ★ 顶部那件东西相对右列的**比例缩放**。
+     *
+     * <p>顶部只有一行（内部高的一半不到），所以比右列小一号；关键是**跟着设置走**
+     * —— 此前这里是个硬上限（24），于是调「网络类型字号」时顶部纹丝不动，
+     * 反而是时间跟着变了（用户反馈）。
+     */
+    static final float CAP_TOP_SCALE = 0.8f;
+    /**
+     * 「闪电 + 同伴」组合里两件之间的间距，设计单位。
+     * ★ v106：3.0 → 4.0，与圆环 {@link #CHARGE_PAIR_GAP} 对齐 —— 用户实测
+     * 3.0 时闪电与电量/信号/5GA 全都"贴住"，要圆环那种一丢丢空隙。
+     */
+    static final float CAP_PAIR_GAP = 3.0f;
+
+    /**
+     * ★ 顶部开口里那件东西的垂直中心：**悬浮在轮廓线上方**。
+     *
+     * <p>顶边贴墨迹盒上沿、底边正好压到线上 —— 这是用户认可的那版预览里的位置。
+     * 此前先后改成"骑在线上"（0.4h）和"坐在缺口内侧"，都被否了
+     * （"下沉了""位置都不对"）。
+     */
+    static float capTopSlotCy(float height) {
+        // ★ 与 L41 一致（用户确认"L41 图标位置是好的"）：顶边贴墨迹盒上沿，
+        //   底部那件悬浮在轮廓线上方。
+        return CAP_INK_Y + height * 0.5f;
+    }
+
+    /**
+     * ★ 顶部那件东西的固定 cap 高 —— 与用户认可的那版预览一致（比右列大一号）。
+     *
+     * <p>顶部只有它自己一件东西，可以比右列大一点才压得住场；右列那一格
+     * 要和时钟并排，反而要小一号。
+     */
+    static final float CAP_TOP_CAP_H = 18.0f;
+
+
+    /**
+     * ★ 顶部开口里那件东西离线头的距离。
+     *
+     * <p>信号点行开口用 {@link #capDotClearance()}（5.31）—— 那是**点与点之间**
+     * 要留的呼吸。顶部放的是**一整件东西**（闪电+读数），用同一套让位就会在
+     * 内容两侧各空出 5.31 + 半个描边 ≈ 9 个单位，看着"空白一大块"（用户实机截图）。
+     * 顶部用自己的一点点间隙即可。
+     */
+    static final float CAP_TOP_CLEARANCE = 1.0f;
+
+    /**
+     * ★ 顶部开口按内容宽度让位：内容半宽 + 顶部自己的间隙 + 半个描边。
+     */
+    static float capTopSlotReach(float contentWidth, float stroke) {
+        return contentWidth * 0.5f + CAP_TOP_CLEARANCE + stroke * 0.5f;
+    }
+
+    /**
+     * The height every reading and icon in the capsule is drawn at: the
+     * reference's 26.5% of the capsule's height, as a cap height.
+     */
+    static final float CAP_ICON_H = 0.265f * CAP_BOTTOM;
+
+    /**
+     * The arcs' and the bolt's scales, each sized so its own ink is
+     * {@link #CAP_ICON_H} tall, each also capped by the interior so an extreme
+     * stroke setting makes the icons give way rather than cross the dot rows.
+     */
+    static float capWifiScale(float stroke) {
+        return Math.min(CAP_ICON_H / W_INK_H, capInteriorHeight(stroke) / W_INK_H);
+    }
+
+    static float capBoltScale(float stroke) {
+        return Math.min(CAP_ICON_H / BOLT_INK_H, capInteriorHeight(stroke) / BOLT_INK_H);
+    }
+
+    /** Places the arcs' ink centre on the right-hand slot's own centre. */
+    static float capWifiOffsetX(float stroke) {
+        return capRightCx(stroke) - W_CX * capWifiScale(stroke);
+    }
+
+    static float capWifiOffsetY(float stroke) {
+        return capInteriorCy(stroke) - W_INK_CY * capWifiScale(stroke);
+    }
+
+    /**
+     * The bolt's offset, written against {@code BOLT_CX_REF} and
+     * {@link #BOLT_INK_CY} - the bolt path's own ink centre. Never against
+     * {@code BOLT_CX}/{@code BOLT_TOP}: those are the ring's targets, and
+     * reusing them as path coordinates puts the bolt down and to the right.
+     */
+    static float capBoltOffsetX(float stroke) {
+        return capRightCx(stroke) - BOLT_CX_REF * capBoltScale(stroke);
+    }
+
+    static float capBoltOffsetY(float stroke) {
+        return capInteriorCy(stroke) - BOLT_INK_CY * capBoltScale(stroke);
+    }
+
+    /**
+     * The capsule's ink box: the outline plus its stroke, sized against the
+     * largest stroke the slider offers rather than the default, the way
+     * {@link #RECT_INK_W} is.
+     */
+    static final float CAP_INK_X = CAP_LEFT - Prefs.MAX_RING_STROKE * CAP_STROKE_RATIO * 0.5f;
+    static final float CAP_INK_Y = CAP_TOP - Prefs.MAX_RING_STROKE * CAP_STROKE_RATIO * 0.5f;
+    static final float CAP_INK_W =
+            (CAP_RIGHT + Prefs.MAX_RING_STROKE * CAP_STROKE_RATIO * 0.5f) - CAP_INK_X;
+    static final float CAP_INK_H =
+            (CAP_BOTTOM + Prefs.MAX_RING_STROKE * CAP_STROKE_RATIO * 0.5f) - CAP_INK_Y;
+
+    /**
+     * 开口带高度（设计单位）。★ 上游 v1.7 同值 9：在墨迹盒上下各加一条带，
+     * 让顶部/底部开口里的那件东西有落点，而胶囊本体像素不变（宿主高度含这两条带）。
+     */
+    static final float CAP_BAND_H = 9f;
+
+    /**
+     * 含开口带的墨迹盒上下沿：绘制比例由宽度决定（CAP_INK_W），所以胶囊本体
+     * 像素不变，只是宿主更高，多出来的空间正是开口件要用的。
+     */
+    static final float CAP_INK_TOP = CAP_INK_Y - CAP_BAND_H;
+    static final float CAP_INK_BOTTOM = CAP_INK_Y + CAP_INK_H + CAP_BAND_H;
+
+    /**
+     * 宿主高度：在状态栏给出的高度基础上，按比例尺补上上下两条开口带。
+     * 宽度仍由 {@link #capHostWidthPx} 决定（见其注释），所以胶囊本体大小不变，
+     * 只是视图更高，给开口件留出空间，避免被宿主画布裁掉。
+     */
+    static int capHostHeightPx(int heightPx) {
+        if (heightPx <= 0) {
+            return 0;
+        }
+        final float scale = heightPx / CAP_INK_H;
+        final int grown = Math.round(heightPx + 2f * CAP_BAND_H * scale);
+        return Math.max(heightPx, grown);
+    }
+
+    /**
+     * 开口（TOP/BOTTOM 那一行）里那件东西的垂直中心：落在<b>轮廓线本身</b>上
+     * （openingLaneCy 返回 0），即骑在缺口开口处 —— 与上游一致。
+     * 顶部开口件半边在带里、半边在胶囊体内；底部同理。
+     */
+    static float capOpeningCy(boolean top, float stroke) {
+        return top ? CAP_TOP + openingLaneCy(stroke) : CAP_BOTTOM - openingLaneCy(stroke);
+    }
+
+    /**
+     * 开口件相对轮廓线向外偏移多少。返回 0：件骑在线上（上游同款），带里的空间
+     * 由 {@link #CAP_BAND_H} 提供，绘制比例不变。
+     */
+    private static float openingLaneCy(float stroke) {
+        return 0f;
+    }
+
+    /** 开口件可用墨高（设计单位）：带高减去描边与间隙。 */
+    static float capOpeningTextRoomH(float stroke) {
+        final float inward = capInteriorTop(stroke) - CAP_TOP;
+        final float outward = CAP_TOP - CAP_INK_TOP;
+        final float half = Math.min(inward, outward) - CAP_OPENING_GAP;
+        final float ink = 2f * half;
+        return Math.max(CAP_DOT_R * 2f, ink);
+    }
+
+    /** 同上，但作为字号（em）：文本适配吃的是 em。 */
+    static float capOpeningTextEm(float stroke) {
+        return capOpeningTextRoomH(stroke) / CAP_HEIGHT_RATIO;
+    }
+
+    /** 开口件离线头的间隙。 */
+    private static final float CAP_OPENING_GAP = 1f;
+
+    /**
+     * 顶部开口件整体下移多少设计单位（三星挂载专用）。
+     *
+     * <p>实机日志（debug(58)）证实：状态栏 GlyphView 被负值 {@code lpMargin} 上移塞进
+     * 状态栏行，而某父层 clip 未被解除（{@code setClipToPadding not found → guard skipped}），
+     * 于是顶部带（开口里的信号/类型）被裁掉一点点；底部带没被裁（点 {@code dotY=104.2} 正常）。
+     *
+     * <p><b>用户 10-22 实机标定 = 1.0</b>（1 设计单位 ≈ 1.35px @画布198）：
+     * 先前 9.0 实测过头（用户：\"太下来了\"，实移 12.2px）；作为量级参照，缺口里 5GA 的
+     * \"G\" 那一竖本身也才 ≈2.2 设计单位 ≈ 3px —— 用户要的就是比它还小的\"一丢丢\"。
+     * 仅三星侧需要——上游在 HyperOS 原链上 clipChildren=false，骑线不触发。
+     */
+    static final float CAP_TOP_OPEN_DROP = 1.0f;
+
+    /**
+     * 开口（缺口）轮廓在内容半宽之外再额外退让多少：让带缺口的地方整体多
+     * 留一点缝隙（用户：每个带缺口的地方都稍微再加一点缝）。不含成对时同伴
+     * 那件的半宽——那部分由 {@link #capPairHalf} 算进开口。
+     */
+    static final float CAP_OPENING_EXTRA = 2.0f;
+
+    /**
+     * 开口件（文字或图标）的水平半宽，用于按"这一帧实际画的那件"回退轮廓缺口。
+     * measured 而非估计：电量/类型/时钟宽度差 2:1 以上，单一常量会要么压线、要么留空。
+     */
+    static float capPieceReach(int part, int level, String type, float stroke, float roomH) {
+        switch (part) {
+            case Prefs.PART_WIFI:
+                return W_INK_W * capWifiScale(stroke) * 0.5f;
+            case Prefs.PART_BOLT:
+                return 6.25f * capBoltScale(stroke);
+            case Prefs.PART_VALUE:
+                return capTextReach("100", stroke, roomH);
+            case Prefs.PART_TYPE:
+                return capTextReach("5GA", stroke, roomH);
+            case Prefs.PART_CLOCK:
+                return capTextReach("19:41", stroke, roomH);
+            default:
+                return 0f;
+        }
+    }
+
+    /** 文本在开口字号下实际会画多宽（半宽）。 */
+    private static float capTextReach(String text, float stroke, float roomH) {
+        final float em = Math.min(Prefs.DEF_VALUE_SIZE * CAP_TEXT_SCALE, roomH);
+        final float half = Math.max(0, text.length()) * em * 0.31f;
+        return Math.min(half, capFlatRight() * 0.5f);
+    }
+
+    /** 开口整行可用宽度：平直线段范围（弧端之外会悬空在弧上）。 */
+    static float capOpeningWidth() {
+        return capFlatRight() - capFlatLeft();
+    }
+
+    /**
+     * The width the capsule's host view has to ask for, so the shape can be as
+     * tall as the bar allows: the ink box's own aspect ratio. Deliberately not
+     * scaled by glyphFit - that multiplier is already applied to the drawing
+     * scale, and folding it in here would apply it twice.
+     */
+    static int capHostWidthPx(int heightPx) {
+        if (heightPx <= 0) {
+            return 0;
+        }
+        return Math.round(heightPx * (CAP_INK_W / CAP_INK_H));
+    }
+
     // ------------------------------------------------------------------- frame
     /**
      * Tight ink box of the whole glyph (battery arc + stroke, Wi-Fi arcs + dot,

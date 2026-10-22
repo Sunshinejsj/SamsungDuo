@@ -277,14 +277,38 @@ final class TrioState {
                 //   ff6f767d，9.9 的单 DFS 会先撞上它 → 状态栏取色恒灰。
                 //   这里**只在读到那个固定灰时**才换用真系统图标类的探针；
                 //   8.5 树里根本不会出现这个值 ⇒ 8.5 的取值路径与 9.9 逐行一致。
-                if (t == GRAY_CLOCK_9) {
+                // ★ 浅色模式：时钟/运营商名这类非系统图标在 OneUI 浅色下被染成**纯黑**
+                //   （0xFF000000），而系统图标类（电池/网速）是**深灰**。DFS 先撞到纯黑
+                //   那个时，我们的图标就比状态栏原生图标黑一截 —— 与原生不一致。
+                //   和 GRAY_CLOCK_9 一样处理：读到纯黑就改用系统图标类的颜色。
+                // ★ 10-22 实修：判定必须**只看 RGB、忽略 alpha**。
+                //   实机日志（22:45~23:13）里探针撞到的是 TextView（三星时钟/运营商名），
+                //   读回的是 b3000000 / c4939393 / d1bcbcbc 这类**带 alpha** 的黑与灰，
+                //   而这里原本写成 `t == GRAY_CLOCK_9(0xff6f767d) || t == PURE_BLACK(0xff000000)`，
+                //   alpha 一变就整个失之交臂 ⇒ 黑色被当成有效图标色直接采信，再被
+                //   foreground() 的 `| 0xFF000000` 锤成 **ff000000 纯黑**
+                //   —— 就是用户报的「深色模式纯黑」（日志 iconTint=edffffff → ff000000）。
+                // ★ 10-22 二修（实机 06:44~06:45）：探针几乎必然先撞到 TextView
+                //   （三星状态栏左侧的时钟/运营商名），读到的是**文字色** ——
+                //   半透明灰 caa7a7a7 / d1bcbcbc，或黑 b3000000 ——
+                //   与原生图标（电池/信号）根本不同步，深色模式下就画出 ffa6a6a6 的中灰
+                //   （日志 06:44:21 fg=ffffffff → 06:45:05 fg=ffa6a6a6）。
+                //   真系统图标类才是与原生图标同步的那一路：**只要探针不是它，就以它为准**；
+                //   树里没有它才沿用探针色（最坏情况 = 现状，不会更差）。
+                if (!isSystemIconView(probe)) {
                     final View sys = searchSystemIcon(host, 0);
-                    if (sys != null && sys != probe) {
+                    if (sys != null) {
                         final int t2 = TrioHooks.tintFrom(sys);
-                        if (t2 != 0 && t2 != t) {
+                        if (t2 != 0 && !isUnusableInk(t2)) {
                             t = t2;
                         }
                     }
+                }
+                // 仍拿到墨色（黑 / 近黑 / OneUI 固定灰）⇒ 不可用作图标色，返回 0
+                //   交给 foreground() 的 bg / sLastGoodTint / nightMode 链兜底。
+                //   **绝不把黑色交给渲染层**，也绝不让它存进 sLastGoodTint 污染下拉/锁屏。
+                if (isUnusableInk(t)) {
+                    return 0;
                 }
                 if (t != 0) {
                     mLastLiveTint = t;
@@ -1671,7 +1695,14 @@ final class TrioState {
         if (t == 0) {
             // ★ v99（9.9 原样）：本实例至今没读到过自己的真实色时，用"最近任一实例读到的
             //   真实主题色"兜底，而不是 nightMode() 强制纯黑/纯白。
-            if (sLastGoodTint != 0) {
+            // ★ 10-22：本界面自己的背景亮度**优先** —— 下拉/锁屏与状态栏明暗互相独立，
+            //   hostThemeTint() 此前写了却从没接进这条链（等于白写），
+            //   结果"探针读不到"时只能去抄跨实例的 sLastGoodTint，三处界面被绑在一起。
+            final int bg = hostThemeTint();
+            if (bg != 0) {
+                t = bg;
+                src = "bg";
+            } else if (sLastGoodTint != 0 && !isUnusableInk(sLastGoodTint)) {
                 t = sLastGoodTint;
                 src = "sLastGood";
             } else {
@@ -1752,6 +1783,46 @@ final class TrioState {
     private static int sLastGoodTint = 0;
     /** ★ OneUI 9.0 专属：状态栏左侧时钟/运营商名的固定灰，命中它才换探针。 */
     private static final int GRAY_CLOCK_9 = 0xff6f767d;
+
+    /** 纯黑：OneUI 浅色下时钟/运营商名的染色，不是状态栏系统图标的颜色。 */
+    private static final int PURE_BLACK = 0xff000000;
+
+    /**
+     * 这个 View 是不是"会被系统染色"的**真系统图标类** —— 与原生图标同步的那一类。
+     * 时钟/运营商名这类 TextView 虽然也会被染色，但拿到的是文字色，不是图标色。
+     */
+    private static boolean isSystemIconView(View v) {
+        if (v == null) {
+            return false;
+        }
+        final String cn = v.getClass().getName();
+        return cn.equals("com.android.systemui.statusbar.StatusBarIconView")
+                || cn.equals("com.android.systemui.statusbar.policy.NetspeedView")
+                || cn.equals("com.android.systemui.battery.BatteryMeterView");
+    }
+
+    /**
+     * 这个色能不能直接拿去画图标？**只看 RGB，忽略 alpha** ——
+     * 三星下发给时钟/运营商名这类文字的是 {@code b3000000}、{@code c4939393} 之类
+     * 带 alpha 的黑/灰，与 {@code 0xff000000}、{@code 0xff6f767d} 字面值并不相等，
+     * 用 {@code ==} 判等必然漏判（10-22「深色模式纯黑」的根因）。
+     *
+     * @param t ARGB。<b>0（该 View 未染色）不算不可用</b> —— 那是"探针暂时读不到色"
+     *   的正常过渡态，必须留给原来的"沿用本实例上一次值"逻辑，否则颜色会来回跳。
+     */
+    private static boolean isUnusableInk(int t) {
+        if (t == 0) {
+            return false;
+        }
+        final int rgb = t & 0x00FFFFFF;
+        if (rgb == (PURE_BLACK & 0x00FFFFFF)            // 纯黑（任意 alpha）
+                || rgb == (GRAY_CLOCK_9 & 0x00FFFFFF)) { // OneUI 固定灰（任意 alpha）
+            return true;
+        }
+        // 近乎黑（实机 probe[TextView]=b30c0c0c）同样不是图标色：原生图标最暗也就
+        // 浅色下的深灰 ff535353 一档，不可能暗到 0x0c 这个量级。
+        return luminance(0xFF000000 | rgb) <= 0.10f;
+    }
 
     /**
      * 本实例是不是下拉面板（{@code com.android.systemui.util.NoRemeasureMotionLayout}

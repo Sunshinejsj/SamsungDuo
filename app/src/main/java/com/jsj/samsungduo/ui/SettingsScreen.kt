@@ -788,6 +788,7 @@ private fun LazyListScope.generalTab(
             val styles = listOf(
                 stringResource(R.string.trio_style_ring),
                 stringResource(R.string.trio_style_rect),
+                stringResource(R.string.trio_style_capsule),
             )
             OverlayDropdownPreference(
                 items = styles,
@@ -798,6 +799,83 @@ private fun LazyListScope.generalTab(
                 enabled = a.glyph,
                 onSelectedIndexChange = { index -> update { repo -> repo.setTrioStyle(index) } },
             )
+            // ★ 胶囊三按钮显式控制（2026-10-21 用户拍板）。仅胶囊样式出现；
+            //   圆环/矩形继续用「颜色」页的充电同显三选项，互不干扰。
+            //   按钮1（右列，恒显）：电量 / 信号。
+            //   按钮2（缺口）：隐藏 / 闪电 / 电量 / 信号 —— 与按钮1重复的件
+            //     直接从选项列表移除（缺口与右侧绝不出现同一组件）。
+            //   按钮3（充电闪电）：隐藏 / 缺口独立 / 缺口+同伴 / 右侧+同伴。
+            if (a.capsule) {
+                val capsuleRightModes = listOf(
+                    Prefs.CAP_RIGHT_VALUE to R.string.capsule_right_value,
+                    Prefs.CAP_RIGHT_SIGNAL to R.string.capsule_right_signal,
+                )
+                OverlayDropdownPreference(
+                    items = capsuleRightModes.map { stringResource(it.second) },
+                    selectedIndex = capsuleRightModes.indexOfFirst { it.first == settings.capsuleRight }
+                        .coerceAtLeast(0),
+                    title = stringResource(R.string.capsule_right_title),
+                    summary = stringResource(R.string.capsule_right_summary),
+                    insideMargin = SettingsItemMargin,
+                    enabled = a.glyph,
+                    onSelectedIndexChange = { index ->
+                        update { repo -> repo.setCapsuleRight(capsuleRightModes[index].first) }
+                    },
+                )
+                // 按钮2 的可用项随按钮1 收窄：右列=电量 ⇒ 屏蔽缺口"电量"；
+                // 右列=信号 ⇒ 屏蔽缺口"信号"。反之亦然（用户规则）。
+                val rightIsValue = settings.capsuleRight == Prefs.CAP_RIGHT_VALUE
+                val capsuleGapModes = listOf(
+                    Prefs.CAP_GAP_NONE to R.string.capsule_gap_none,
+                    Prefs.CAP_GAP_BOLT to R.string.capsule_gap_bolt,
+                    Prefs.CAP_GAP_VALUE to R.string.capsule_gap_value,
+                    Prefs.CAP_GAP_SIGNAL to R.string.capsule_gap_signal,
+                ).filter { (mode, _) ->
+                    when (mode) {
+                        Prefs.CAP_GAP_VALUE -> !rightIsValue
+                        Prefs.CAP_GAP_SIGNAL -> rightIsValue
+                        else -> true
+                    }
+                }
+                OverlayDropdownPreference(
+                    items = capsuleGapModes.map { stringResource(it.second) },
+                    selectedIndex = capsuleGapModes
+                        .indexOfFirst { it.first == settings.capsuleGap }.coerceAtLeast(0),
+                    title = stringResource(R.string.capsule_gap_title),
+                    summary = stringResource(R.string.capsule_gap_summary),
+                    insideMargin = SettingsItemMargin,
+                    enabled = a.glyph,
+                    onSelectedIndexChange = { index ->
+                        update { repo -> repo.setCapsuleGap(capsuleGapModes[index].first) }
+                    },
+                )
+                val capsuleBoltModes = listOf(
+                    Prefs.CAP_BOLT_HIDDEN to R.string.capsule_bolt_hidden,
+                    Prefs.CAP_BOLT_GAP to R.string.capsule_bolt_gap,
+                    Prefs.CAP_BOLT_GAP_PAIR to R.string.capsule_bolt_gap_pair,
+                    Prefs.CAP_BOLT_CENTRE_PAIR to R.string.capsule_bolt_centre_pair,
+                )
+                OverlayDropdownPreference(
+                    items = capsuleBoltModes.map { stringResource(it.second) },
+                    selectedIndex = capsuleBoltModes
+                        .indexOfFirst { it.first == settings.capsuleBoltPos }.coerceAtLeast(0),
+                    title = stringResource(R.string.capsule_bolt_pos_title),
+                    summary = stringResource(R.string.capsule_bolt_pos_summary),
+                    insideMargin = SettingsItemMargin,
+                    enabled = a.glyph,
+                    onSelectedIndexChange = { index ->
+                        update { repo -> repo.setCapsuleBoltPos(capsuleBoltModes[index].first) }
+                    },
+                )
+            }
+            // ★ 胶囊专属：圆环的「闪电 + 同伴」搬进胶囊后的两个位置选择。
+            //   右槽＝圆环环心，顶部开口＝圆环 12 点缺口；闪电只画一次，
+            //   同伴 = 那个位置没有闪电时站着谁（电量 > 5GA > Wi-Fi）。
+            //   只在胶囊样式下出现，另外两种样式用不到。
+            // ★ 胶囊有自己独立的位置/几何命名空间（cap_ 前缀键）：选中胶囊时，
+            //   「充电同显 / 电量数字居中 / 网络类型位置 / 信号位置」等几何与位置
+            //   类设置都走 cap_ 键，与圆环/矩形互不干扰；其余（总开关、组件开关、
+            //   颜色、防烧屏、调试日志）三样式共享。切样式即自动显示对应命名空间的值。
             // Where the glyph is drawn, not what it draws. The status bar window
             // is only about 43dp tall and clips the rest, so this is the switch
             // between "whole glyph, in a window of its own" and "inside the bar,
@@ -1575,7 +1653,9 @@ private fun LazyListScope.colorsTab(
                 title = stringResource(R.string.charge_pair_title),
                 summary = stringResource(R.string.charge_pair_summary),
                 insideMargin = SettingsItemMargin,
-                enabled = a.glyph,
+                // ★ 胶囊禁用（2026-10-21 用户要求）：胶囊的充电闪电由「通用」页的
+                //   按钮3 显式控制，这一套圆环派生的三选项对胶囊不再起作用。
+                enabled = a.glyph && !a.capsule,
                 onSelectedIndexChange = { index -> update { repo -> repo.setChargePairMode(index) } },
             )
             // 信号开关只有「电量数字居中」开着时才有意义：那时信号被挤到缺口，
@@ -1587,7 +1667,8 @@ private fun LazyListScope.colorsTab(
                 title = stringResource(R.string.charge_signal_title),
                 summary = stringResource(R.string.charge_signal_summary),
                 insideMargin = SettingsItemMargin,
-                enabled = a.glyph && a.centreValue,
+                // ★ 胶囊同样禁用：信号在缺口还是右列由按钮1/按钮2 决定。
+                enabled = a.glyph && a.centreValue && !a.capsule,
             )
             RoleColor.entries.forEach { role ->
                 TooltipBox(text = roleGate.orEmpty(), enabled = roleGate != null) {
@@ -2102,7 +2183,9 @@ private fun RowScope.PreviewCell(
                 view.setOutTypeOnly(outTypeOnly)
                 view.setOutSignalOnly(outSignalOnly)
                 view.setPreviewBackground(if (dark) 0xFF1C1B1F.toInt() else 0xFFF2F2F7.toInt())
-                view.setForeground(if (dark) 0xFFFFFFFF.toInt() else 0xFF000000.toInt())
+                // 浅色主题用 OneUI 的图标深灰（0xFF3C4043）而不是纯黑 ——
+                // 状态栏原生图标在浅色下就是深灰，预览用纯黑会比原生黑一截。
+                view.setForeground(if (dark) 0xFFFFFFFF.toInt() else 0xFF3C4043.toInt())
                 view.setState(level, charging, quickCharging, powerSave, low, wifiLevel,
                     MOBILE_LEVEL, slotLevels, mobileType)
             },

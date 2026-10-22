@@ -183,12 +183,32 @@ public final class TrioPreviewView extends View {
         }
 
         final int save = canvas.save();
-        canvas.translate(pad, pad);
         if (outTypeOnly) {
+            canvas.translate(pad, pad);
             drawOutTypeLabel(canvas, innerW, innerH);
         } else if (outSignalOnly) {
+            canvas.translate(pad, pad);
             drawOutSignal(canvas, innerW, innerH);
+        } else if (settings.trioStyle == Prefs.STYLE_CAPSULE) {
+            // ★ 胶囊是 2.17:1 的宽扁形，格子却是正方形 —— 直接按正方形等比缩，
+            //   宽度只能用掉一半，图标缩成中间一条。改成给它一个同比例的宽扁
+            //   子区域（宽度铺满、垂直居中），预览才和状态栏里看到的一样大。
+            // ★ 高度含上下开口带（CAP_INK_TOP/BOTTOM），否则顶部/底部开口件被预览画布裁掉。
+            final int drawH = Math.round(innerW
+                    * ((TrioGeometry.CAP_INK_BOTTOM - TrioGeometry.CAP_INK_TOP)
+                            / TrioGeometry.CAP_INK_W));
+            final float top = (innerH - drawH) * 0.5f;
+            if (drawH <= 0) {
+                canvas.restoreToCount(save);
+                return;
+            }
+            canvas.translate(pad, pad + top);
+            // false: the glyph must not punch a hole through the preview background.
+            TrioRenderer.drawInto(canvas, innerW, drawH, level, charging, quickCharging,
+                    powerSave, low, wifiLevel, mobileLevel, slotLevels, mobileType, foreground,
+                    settings, false);
         } else {
+            canvas.translate(pad, pad);
             // false: the glyph must not punch a hole through the preview background.
             TrioRenderer.drawInto(canvas, innerW, innerH, level, charging, quickCharging,
                     powerSave, low, wifiLevel, mobileLevel, slotLevels, mobileType, foreground,

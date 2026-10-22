@@ -107,6 +107,15 @@ public final class TrioOverlay {
      */
     private static final float SIZE_RATIO = 1.25f;
 
+    /**
+     * ★ 胶囊样式占所在容器的宽度比例。
+     *
+     * <p>胶囊天生 2.17:1 的宽扁形，用方形那套 1.25 倍会超出容器 25%，
+     * 把原生图标挤掉；窄容器（锁屏只有 93px）里更是直接放不下。
+     * 这里给 1.0 倍：宽度不超容器，高度按同比例一起降，形状保持不变。
+     */
+    private static final float CAPSULE_CONTAINER_RATIO = 1.0f;
+
     /** 三合一边长下限（dp），防止容器很小时被压到不可辨认。 */
     private static final float MIN_EDGE_DP = 20f;
 
@@ -144,6 +153,12 @@ public final class TrioOverlay {
     private static float wantWidth() {
         final int scale = effectiveGlyphScale();
         return (scale > 100) ? GLYPH_WIDTH_TREE_DP * scale / 100f : GLYPH_WIDTH_TREE_DP;
+    }
+
+    /** ★ 胶囊样式：墨迹盒接近 2:1，宿主尺寸要按宽扁比例另算。 */
+    private static boolean isCapsuleStyle() {
+        final TrioSettings cfg = TrioConfig.get();
+        return cfg != null && cfg.trioStyle == Prefs.STYLE_CAPSULE;
     }
 
     // ------------------------------------------------- 横屏尺寸回退（v100 → v101 模式无关）
@@ -832,6 +847,24 @@ public final class TrioOverlay {
                 final int cap = Math.max(1, (int) (base * HEIGHT_RATIO));
                 h = Math.min(h, cap);
                 w = h;
+            }
+            // ★ 胶囊：宽扁形（墨迹盒接近 2:1），高度沿用同一套算法，宽度按同高比例另给。
+            //   加宽之后要重新走一遍"宽度兜底 + 下限"，否则会吃掉整条状态栏图标区。
+            // ★ bug 修复：宽度被容器兜底压住时，**高度必须按同比例一起降** ——
+            //   锁屏那一行只有 93px 宽，胶囊 2.17:1 的宽扁形放不下 1:1；只压宽度
+            //   不压高度的话，墨迹会等比缩到 0.6，整个图标"很小很小"。
+            //   胶囊天生就宽，占容器的比例也比方形的紧（SIZE_RATIO 的 1.25 倍
+            //   会超出容器 25%，把原生图标挤掉）。
+            if (isCapsuleStyle()) {
+                w = TrioRenderer.capsuleViewWidth(h);
+                if (containerW > 0) {
+                    final int limit = (int) (containerW * CAPSULE_CONTAINER_RATIO);
+                    if (w > limit) {
+                        w = limit;
+                        h = TrioRenderer.capsuleViewHeight(w);
+                    }
+                }
+                w = Math.max(w, (int) (MIN_EDGE_DP * density));
             }
             // ★ v76 已撤销：曾试过"锁屏放大到刚好填满本行"的窗口边界兜底
             //   （KeyguardStatusBarView 且 h > containerH 时压到 containerH）——
@@ -2483,10 +2516,17 @@ public final class TrioOverlay {
             // ★ v108：窗口模式不一定每帧都走 onDraw，这里用之前先刷新一次方向。
             refreshLandscape(root);
             final int scale = effectiveGlyphScale();
-            final int w = TrioRenderer.viewEdgeForInk(wantWidth() * density);
+            final int edge = TrioRenderer.viewEdgeForInk(wantWidth() * density);
+            // ★ 胶囊：高度沿用同一套算法，宽度按宽扁比例另给。
+            final int w = isCapsuleStyle() ? TrioRenderer.capsuleViewWidth(edge) : edge;
             // ★ v76：>100% 时把**窗口本身**加高，否则窗口边界（不是 clipChildren）
             //   会把放大的部分裁掉 —— 挂树模式靠逐层放开裁剪，窗口只能加高自己。
-            final int winH = (scale > 100) ? Math.max(barH, w) : barH;
+            // ★ 胶囊：窗口高度含上下开口带（capHostHeightPx 同款算法），否则顶部/底部
+            //   开口件被窗口 Surface 裁掉；并据此把窗口上移半个带，让胶囊本体仍对齐状态栏。
+            final boolean capWin = isCapsuleStyle();
+            final int winH = capWin
+                    ? TrioRenderer.capsuleViewHeight(w)
+                    : ((scale > 100) ? Math.max(barH, edge) : barH);
             params.width = w;
             // ★ 用状态栏实际高度，绝不用 MATCH_PARENT（否则整屏高、漂到中部）
             params.height = winH;
@@ -2494,7 +2534,9 @@ public final class TrioOverlay {
             //   推出窗口 Surface 被裁，见 shiftBaseFor）。正平移 = 往右 = x 增大。
             params.x = barRight - w - (int) (RIGHT_MARGIN_DP * density)
                     + Math.round(glyphShiftPxF(glyph));
-            params.y = barTop;
+            params.y = capWin
+                    ? barTop - Math.round((winH - edge) / 2f)
+                    : barTop;
             windowManager.updateViewLayout(glyph, params);
             // 只在位置变化时记一条日志，避免每秒刷屏
             if (params.x != lastLoggedX || params.y != lastLoggedY) {
@@ -3048,6 +3090,14 @@ public final class TrioOverlay {
                 final float dp = treeAttached ? wantWidth() : GLYPH_WIDTH_DP;
                 w = (int) (dp * getResources().getDisplayMetrics().density);
                 h = w; // 正方形
+            }
+            // ★ 胶囊：宽扁形，宿主必须同高给出对应宽，否则墨迹只占中间一条。
+            // ★ bug 修复：lp 里已经带着"按容器算好的"宽高（挂载那段做过宽度兜底
+            //   与高度同比例下调），这里再无条件重算会把兜底**覆盖掉** ——
+            //   容器窄时视图反而要得比容器还宽，被父容器压扁、还挤掉原生图标。
+            //   lp 有值时以它为准。
+            if (isCapsuleStyle() && (lp == null || lp.width <= 0 || lp.height <= 0)) {
+                w = TrioRenderer.capsuleViewWidth(h);
             }
             setMeasuredDimension(resolveSize(w, widthSpec), resolveSize(h, heightSpec));
         }

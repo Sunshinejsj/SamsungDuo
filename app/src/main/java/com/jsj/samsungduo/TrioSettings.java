@@ -38,8 +38,9 @@ public final class TrioSettings {
      */
     public boolean valueCentred;
     /**
-     * Which three-in-one layout is drawn: {@link Prefs#STYLE_RING} or
-     * {@link Prefs#STYLE_RECT}. Clamped to that range wherever it is read.
+     * Which three-in-one layout is drawn: {@link Prefs#STYLE_RING},
+     * {@link Prefs#STYLE_RECT} or {@link Prefs#STYLE_CAPSULE}. Clamped to that
+     * range wherever it is read.
      *
      * <p>Both arrangements read the same keys, but they are not interchangeable:
      * the rectangular one ignores {@link #valueCentred} (its value has a fixed
@@ -118,6 +119,18 @@ public final class TrioSettings {
     public int chargeSignalSize;
     /** ★ v104：组合图标里 5GA 的 "A" 相对主字号的百分比（50–100）。 */
     public int chargeSuffixAScale;
+
+    /**
+     * ★ 胶囊三按钮显式控制（2026-10-21 用户拍板）。仅 STYLE_CAPSULE 有意义，
+     * 圆环/矩形读不到这三个键（键名不带 cap_ 前缀，只此一样式使用）。
+     * 见 {@link Prefs#KEY_CAPSULE_RIGHT} 等处常量注释。
+     */
+    /** 按钮1 右列内容：{@link Prefs#CAP_RIGHT_VALUE} / {@link Prefs#CAP_RIGHT_SIGNAL}。 */
+    public int capsuleRight;
+    /** 按钮2 缺口内容：{@link Prefs#CAP_GAP_NONE} 等。 */
+    public int capsuleGap;
+    /** 按钮3 充电闪电位置：{@link Prefs#CAP_BOLT_HIDDEN} 等。 */
+    public int capsuleBoltPos;
 
     public int ringStroke;
     public int arcStroke;
@@ -241,6 +254,10 @@ public final class TrioSettings {
         s.chargeSignalSize = Prefs.DEF_CHARGE_SIGNAL_SIZE;
         s.chargeSuffixAScale = Prefs.DEF_CHARGE_SUFFIX_A_SCALE;
 
+        s.capsuleRight = Prefs.DEF_CAPSULE_RIGHT;
+        s.capsuleGap = Prefs.DEF_CAPSULE_GAP;
+        s.capsuleBoltPos = Prefs.DEF_CAPSULE_BOLT_POS;
+
         s.ringStroke = Prefs.DEF_RING_STROKE;
         s.arcStroke = Prefs.DEF_ARC_STROKE;
         s.valueSize = Prefs.DEF_VALUE_SIZE;
@@ -298,14 +315,17 @@ public final class TrioSettings {
         s.showMobile = p.getBoolean(Prefs.KEY_SHOW_MOBILE, Prefs.DEF_SHOW_MOBILE);
         s.showValue = p.getBoolean(Prefs.KEY_SHOW_VALUE, Prefs.DEF_SHOW_VALUE);
         s.showBolt = p.getBoolean(Prefs.KEY_SHOW_BOLT, Prefs.DEF_SHOW_BOLT);
-        s.mobileTypeMode = readMobileTypeMode(p);
-        s.valueCentred = p.getBoolean(Prefs.KEY_VALUE_CENTRED, Prefs.DEF_VALUE_CENTRED);
-        s.trioStyle = Prefs.clamp(
+        // 先确定样式，下面所有几何/位置字段按当前命名空间（cap_ 或原键）读取。
+        final int style = Prefs.clamp(
                 p.getInt(Prefs.KEY_TRIO_STYLE, Prefs.DEF_TRIO_STYLE),
                 Prefs.MIN_TRIO_STYLE, Prefs.MAX_TRIO_STYLE);
+        final boolean capsule = style == Prefs.STYLE_CAPSULE;
+        s.trioStyle = style;
+        s.mobileTypeMode = readMobileTypeMode(p, Prefs.capKeyAware(Prefs.KEY_MOBILE_TYPE_MODE, capsule));
+        s.valueCentred = p.getBoolean(Prefs.capKeyAware(Prefs.KEY_VALUE_CENTRED, capsule), Prefs.DEF_VALUE_CENTRED);
         s.dualSim = p.getBoolean(Prefs.KEY_DUAL_SIM, Prefs.DEF_DUAL_SIM);
         s.signalMode = Prefs.clamp(
-                p.getInt(Prefs.KEY_SIGNAL_MODE, Prefs.DEF_SIGNAL_MODE),
+                p.getInt(Prefs.capKeyAware(Prefs.KEY_SIGNAL_MODE, capsule), Prefs.DEF_SIGNAL_MODE),
                 Prefs.MIN_SIGNAL_MODE, Prefs.MAX_SIGNAL_MODE);
         s.stackedSignal = p.getBoolean(Prefs.KEY_STACKED_SIGNAL, Prefs.DEF_STACKED_SIGNAL);
         s.dataSimOnly = p.getBoolean(Prefs.KEY_DATA_SIM_ONLY, Prefs.DEF_DATA_SIM_ONLY);
@@ -322,66 +342,77 @@ public final class TrioSettings {
                 p.getInt(Prefs.KEY_LOW_THRESHOLD, Prefs.DEF_LOW_THRESHOLD),
                 Prefs.MIN_LOW_THRESHOLD, Prefs.MAX_LOW_THRESHOLD);
         s.powerSaveColor = p.getBoolean(Prefs.KEY_POWER_SAVE_COLOR, Prefs.DEF_POWER_SAVE_COLOR);
-        s.chargePairMode = readPairMode(p, Prefs.KEY_CHARGE_PAIR_MODE,
+        s.chargePairMode = readPairMode(p, Prefs.capKeyAware(Prefs.KEY_CHARGE_PAIR_MODE, capsule),
                 Prefs.KEY_CHARGE_WITH_VALUE, true);
         s.chargeSignalAlso = p.getBoolean(
-                Prefs.KEY_CHARGE_SIGNAL_ALSO, Prefs.DEF_CHARGE_SIGNAL_ALSO);
+                Prefs.capKeyAware(Prefs.KEY_CHARGE_SIGNAL_ALSO, capsule), Prefs.DEF_CHARGE_SIGNAL_ALSO);
         s.chargeValueSize = Prefs.clamp(
-                p.getInt(Prefs.KEY_CHARGE_VALUE_SIZE, Prefs.DEF_CHARGE_VALUE_SIZE),
+                p.getInt(Prefs.capKeyAware(Prefs.KEY_CHARGE_VALUE_SIZE, capsule), Prefs.DEF_CHARGE_VALUE_SIZE),
                 Prefs.MIN_CHARGE_VALUE_SIZE, Prefs.MAX_CHARGE_VALUE_SIZE);
         s.chargeSignalSize = Prefs.clamp(
-                p.getInt(Prefs.KEY_CHARGE_SIGNAL_SIZE, Prefs.DEF_CHARGE_SIGNAL_SIZE),
+                p.getInt(Prefs.capKeyAware(Prefs.KEY_CHARGE_SIGNAL_SIZE, capsule), Prefs.DEF_CHARGE_SIGNAL_SIZE),
                 Prefs.MIN_CHARGE_SIGNAL_SIZE, Prefs.MAX_CHARGE_SIGNAL_SIZE);
         s.chargeSuffixAScale = Prefs.clamp(
-                p.getInt(Prefs.KEY_CHARGE_SUFFIX_A_SCALE, Prefs.DEF_CHARGE_SUFFIX_A_SCALE),
+                p.getInt(Prefs.capKeyAware(Prefs.KEY_CHARGE_SUFFIX_A_SCALE, capsule), Prefs.DEF_CHARGE_SUFFIX_A_SCALE),
                 Prefs.MIN_CHARGE_SUFFIX_A_SCALE, Prefs.MAX_CHARGE_SUFFIX_A_SCALE);
 
+        // ★ 胶囊三按钮：仅胶囊读（键不带 cap_ 前缀，圆环/矩形不读）。
+        s.capsuleRight = Prefs.clamp(
+                p.getInt(Prefs.KEY_CAPSULE_RIGHT, Prefs.DEF_CAPSULE_RIGHT),
+                Prefs.MIN_CAPSULE_RIGHT, Prefs.MAX_CAPSULE_RIGHT);
+        s.capsuleGap = Prefs.clamp(
+                p.getInt(Prefs.KEY_CAPSULE_GAP, Prefs.DEF_CAPSULE_GAP),
+                Prefs.MIN_CAPSULE_GAP, Prefs.MAX_CAPSULE_GAP);
+        s.capsuleBoltPos = Prefs.clamp(
+                p.getInt(Prefs.KEY_CAPSULE_BOLT_POS, Prefs.DEF_CAPSULE_BOLT_POS),
+                Prefs.MIN_CAPSULE_BOLT_POS, Prefs.MAX_CAPSULE_BOLT_POS);
+
         s.ringStroke = Prefs.clamp(
-                p.getInt(Prefs.KEY_RING_STROKE, Prefs.DEF_RING_STROKE),
+                p.getInt(Prefs.capKeyAware(Prefs.KEY_RING_STROKE, capsule), Prefs.DEF_RING_STROKE),
                 Prefs.MIN_RING_STROKE, Prefs.MAX_RING_STROKE);
         s.arcStroke = Prefs.clamp(
-                p.getInt(Prefs.KEY_ARC_STROKE, Prefs.DEF_ARC_STROKE),
+                p.getInt(Prefs.capKeyAware(Prefs.KEY_ARC_STROKE, capsule), Prefs.DEF_ARC_STROKE),
                 Prefs.MIN_ARC_STROKE, Prefs.MAX_ARC_STROKE);
         s.valueSize = Prefs.clamp(
-                p.getInt(Prefs.KEY_VALUE_SIZE, Prefs.DEF_VALUE_SIZE),
+                p.getInt(Prefs.capKeyAware(Prefs.KEY_VALUE_SIZE, capsule), Prefs.DEF_VALUE_SIZE),
                 Prefs.MIN_VALUE_SIZE, Prefs.MAX_VALUE_SIZE);
         s.valueWeight = Prefs.clamp(
-                p.getInt(Prefs.KEY_VALUE_WEIGHT, Prefs.DEF_VALUE_WEIGHT),
+                p.getInt(Prefs.capKeyAware(Prefs.KEY_VALUE_WEIGHT, capsule), Prefs.DEF_VALUE_WEIGHT),
                 Prefs.MIN_VALUE_WEIGHT, Prefs.MAX_VALUE_WEIGHT);
         s.typeSize = Prefs.clamp(
-                p.getInt(Prefs.KEY_TYPE_SIZE, Prefs.DEF_TYPE_SIZE),
+                p.getInt(Prefs.capKeyAware(Prefs.KEY_TYPE_SIZE, capsule), Prefs.DEF_TYPE_SIZE),
                 Prefs.MIN_TYPE_SIZE, Prefs.MAX_TYPE_SIZE);
-        s.outTypeSize = readOutTypeSize(p, density);
+        s.outTypeSize = readOutTypeSize(p, Prefs.capKeyAware(Prefs.KEY_OUT_TYPE_SIZE_DP, capsule), density);
         s.outSignalSize = Prefs.clamp(
-                p.getInt(Prefs.KEY_OUT_SIGNAL_SIZE, Prefs.DEF_OUT_SIGNAL_SIZE),
+                p.getInt(Prefs.capKeyAware(Prefs.KEY_OUT_SIGNAL_SIZE, capsule), Prefs.DEF_OUT_SIGNAL_SIZE),
                 Prefs.MIN_OUT_SIGNAL_SIZE, Prefs.MAX_OUT_SIGNAL_SIZE);
         s.outTypeMarginLeft = Prefs.clamp(
-                p.getInt(Prefs.KEY_OUT_TYPE_MARGIN_LEFT, Prefs.DEF_OUT_TYPE_MARGIN_LEFT),
+                p.getInt(Prefs.capKeyAware(Prefs.KEY_OUT_TYPE_MARGIN_LEFT, capsule), Prefs.DEF_OUT_TYPE_MARGIN_LEFT),
                 Prefs.MIN_OUT_TYPE_MARGIN, Prefs.MAX_OUT_TYPE_MARGIN);
         s.outTypeMarginRight = Prefs.clamp(
-                p.getInt(Prefs.KEY_OUT_TYPE_MARGIN_RIGHT, Prefs.DEF_OUT_TYPE_MARGIN_RIGHT),
+                p.getInt(Prefs.capKeyAware(Prefs.KEY_OUT_TYPE_MARGIN_RIGHT, capsule), Prefs.DEF_OUT_TYPE_MARGIN_RIGHT),
                 Prefs.MIN_OUT_TYPE_MARGIN, Prefs.MAX_OUT_TYPE_MARGIN);
         s.outSignalMargin = Prefs.clamp(
-                p.getInt(Prefs.KEY_OUT_SIGNAL_MARGIN, Prefs.DEF_OUT_SIGNAL_MARGIN),
+                p.getInt(Prefs.capKeyAware(Prefs.KEY_OUT_SIGNAL_MARGIN, capsule), Prefs.DEF_OUT_SIGNAL_MARGIN),
                 Prefs.MIN_OUT_SIGNAL_MARGIN, Prefs.MAX_OUT_SIGNAL_MARGIN);
         s.glyphLeftOffset = Prefs.clamp(
-                p.getInt(Prefs.KEY_GLYPH_LEFT_OFFSET, Prefs.DEF_GLYPH_LEFT_OFFSET),
+                p.getInt(Prefs.capKeyAware(Prefs.KEY_GLYPH_LEFT_OFFSET, capsule), Prefs.DEF_GLYPH_LEFT_OFFSET),
                 Prefs.MIN_GLYPH_LEFT_OFFSET, Prefs.MAX_GLYPH_LEFT_OFFSET);
         s.glyphShift = Prefs.clamp(
-                p.getInt(Prefs.KEY_GLYPH_SHIFT, Prefs.DEF_GLYPH_SHIFT),
+                p.getInt(Prefs.capKeyAware(Prefs.KEY_GLYPH_SHIFT, capsule), Prefs.DEF_GLYPH_SHIFT),
                 Prefs.MIN_GLYPH_SHIFT, Prefs.MAX_GLYPH_SHIFT);
-        s.perfTemp = p.getBoolean(Prefs.KEY_PERF_TEMP, Prefs.DEF_PERF_TEMP);
+        s.perfTemp = p.getBoolean(Prefs.capKeyAware(Prefs.KEY_PERF_TEMP, capsule), Prefs.DEF_PERF_TEMP);
         s.perfOuterMargin = Prefs.clamp(
-                p.getInt(Prefs.KEY_PERF_OUTER_MARGIN, Prefs.DEF_PERF_OUTER_MARGIN),
+                p.getInt(Prefs.capKeyAware(Prefs.KEY_PERF_OUTER_MARGIN, capsule), Prefs.DEF_PERF_OUTER_MARGIN),
                 Prefs.MIN_PERF_OUTER_MARGIN, Prefs.MAX_PERF_OUTER_MARGIN);
         s.perfOuterMarginRight = Prefs.clamp(
-                p.getInt(Prefs.KEY_PERF_OUTER_MARGIN_RIGHT, Prefs.DEF_PERF_OUTER_MARGIN_RIGHT),
+                p.getInt(Prefs.capKeyAware(Prefs.KEY_PERF_OUTER_MARGIN_RIGHT, capsule), Prefs.DEF_PERF_OUTER_MARGIN_RIGHT),
                 Prefs.MIN_PERF_OUTER_MARGIN_RIGHT, Prefs.MAX_PERF_OUTER_MARGIN_RIGHT);
         s.perfScale = Prefs.clamp(
-                p.getInt(Prefs.KEY_PERF_SCALE, Prefs.DEF_PERF_SCALE),
+                p.getInt(Prefs.capKeyAware(Prefs.KEY_PERF_SCALE, capsule), Prefs.DEF_PERF_SCALE),
                 Prefs.MIN_PERF_SCALE, Prefs.MAX_PERF_SCALE);
         s.perfWeight = Prefs.clamp(
-                p.getInt(Prefs.KEY_PERF_WEIGHT, Prefs.DEF_PERF_WEIGHT),
+                p.getInt(Prefs.capKeyAware(Prefs.KEY_PERF_WEIGHT, capsule), Prefs.DEF_PERF_WEIGHT),
                 Prefs.MIN_PERF_WEIGHT, Prefs.MAX_PERF_WEIGHT);
         // ★ v80：>100% 那一档由「独立窗口绘制」看着（见 Prefs.MAX_GLYPH_SCALE_TREE）。
         //   关着独立窗口 = 三合一挂在状态栏那一行里参与排布，放大只能放开
@@ -393,7 +424,7 @@ public final class TrioSettings {
                 ? Prefs.MAX_GLYPH_SCALE
                 : Prefs.MAX_GLYPH_SCALE_TREE;
         s.glyphScale = Prefs.clamp(
-                p.getInt(Prefs.KEY_GLYPH_SCALE, Prefs.DEF_GLYPH_SCALE),
+                p.getInt(Prefs.capKeyAware(Prefs.KEY_GLYPH_SCALE, capsule), Prefs.DEF_GLYPH_SCALE),
                 Prefs.MIN_GLYPH_SCALE, glyphScaleCap);
         s.burnInProtect = p.getBoolean(Prefs.KEY_BURN_IN_PROTECT, Prefs.DEF_BURN_IN_PROTECT);
         s.burnInAmplitude = Prefs.clamp(
@@ -403,13 +434,13 @@ public final class TrioSettings {
                 p.getInt(Prefs.KEY_BURN_IN_PERIOD, Prefs.DEF_BURN_IN_PERIOD),
                 Prefs.MIN_BURN_IN_PERIOD, Prefs.MAX_BURN_IN_PERIOD);
         s.typeSuffixScale = Prefs.clamp(
-                p.getInt(Prefs.KEY_TYPE_SUFFIX_SCALE, Prefs.DEF_TYPE_SUFFIX_SCALE),
+                p.getInt(Prefs.capKeyAware(Prefs.KEY_TYPE_SUFFIX_SCALE, capsule), Prefs.DEF_TYPE_SUFFIX_SCALE),
                 Prefs.MIN_TYPE_SUFFIX_SCALE, Prefs.MAX_TYPE_SUFFIX_SCALE);
         s.typeWeight = Prefs.clamp(
-                p.getInt(Prefs.KEY_TYPE_WEIGHT, Prefs.DEF_TYPE_WEIGHT),
+                p.getInt(Prefs.capKeyAware(Prefs.KEY_TYPE_WEIGHT, capsule), Prefs.DEF_TYPE_WEIGHT),
                 Prefs.MIN_TYPE_WEIGHT, Prefs.MAX_TYPE_WEIGHT);
         s.trackAlpha = Prefs.clamp(
-                p.getInt(Prefs.KEY_TRACK_ALPHA, Prefs.DEF_TRACK_ALPHA),
+                p.getInt(Prefs.capKeyAware(Prefs.KEY_TRACK_ALPHA, capsule), Prefs.DEF_TRACK_ALPHA),
                 Prefs.MIN_TRACK_ALPHA, Prefs.MAX_TRACK_ALPHA);
         s.debugLog = p.getBoolean(Prefs.KEY_DEBUG_LOG, Prefs.DEF_DEBUG_LOG);
         return s;
@@ -425,10 +456,10 @@ public final class TrioSettings {
      * placement they had. The legacy key is never written again, so this runs at
      * most until the user's first write of the new key.
      */
-    private static int readMobileTypeMode(SharedPreferences p) {
-        if (p.contains(Prefs.KEY_MOBILE_TYPE_MODE)) {
+    private static int readMobileTypeMode(SharedPreferences p, String key) {
+        if (p.contains(key)) {
             return Prefs.clamp(
-                    p.getInt(Prefs.KEY_MOBILE_TYPE_MODE, Prefs.DEF_MOBILE_TYPE_MODE),
+                    p.getInt(key, Prefs.DEF_MOBILE_TYPE_MODE),
                     Prefs.MIN_MOBILE_TYPE_MODE, Prefs.MAX_MOBILE_TYPE_MODE);
         }
         return p.getBoolean(Prefs.KEY_SHOW_MOBILE_TYPE, Prefs.DEF_SHOW_MOBILE_TYPE)
@@ -452,10 +483,10 @@ public final class TrioSettings {
      * close as the new range allows: 32px at density 3 reads as 11dp, which the
      * 8..26dp range holds unchanged.
      */
-    private static int readOutTypeSize(SharedPreferences p, float density) {
-        if (p.contains(Prefs.KEY_OUT_TYPE_SIZE_DP)) {
+    private static int readOutTypeSize(SharedPreferences p, String dpKey, float density) {
+        if (p.contains(dpKey)) {
             return Prefs.clamp(
-                    p.getInt(Prefs.KEY_OUT_TYPE_SIZE_DP, Prefs.DEF_OUT_TYPE_SIZE_DP),
+                    p.getInt(dpKey, Prefs.DEF_OUT_TYPE_SIZE_DP),
                     Prefs.MIN_OUT_TYPE_SIZE_DP, Prefs.MAX_OUT_TYPE_SIZE_DP);
         }
         if (p.contains(Prefs.KEY_OUT_TYPE_SIZE)) {
@@ -465,8 +496,6 @@ public final class TrioSettings {
                             / safeDensity),
                     Prefs.MIN_OUT_TYPE_SIZE_DP, Prefs.MAX_OUT_TYPE_SIZE_DP);
         }
-        // Neither key present: the user never touched this slider. Fall back
-        // to the 14dp default.
         return Prefs.clamp(Prefs.DEF_OUT_TYPE_SIZE_DP,
                 Prefs.MIN_OUT_TYPE_SIZE_DP, Prefs.MAX_OUT_TYPE_SIZE_DP);
     }
@@ -479,10 +508,10 @@ public final class TrioSettings {
      * with the stored read, so a bundle built by an older writer still migrates
      * the same way instead of silently resetting to off.
      */
-    private static int readMobileTypeMode(Bundle bundle) {
-        if (bundle.containsKey(Prefs.KEY_MOBILE_TYPE_MODE)) {
+    private static int readMobileTypeMode(Bundle bundle, String key) {
+        if (bundle.containsKey(key)) {
             return Prefs.clamp(
-                    bundle.getInt(Prefs.KEY_MOBILE_TYPE_MODE, Prefs.DEF_MOBILE_TYPE_MODE),
+                    bundle.getInt(key, Prefs.DEF_MOBILE_TYPE_MODE),
                     Prefs.MIN_MOBILE_TYPE_MODE, Prefs.MAX_MOBILE_TYPE_MODE);
         }
         return bundle.getBoolean(Prefs.KEY_SHOW_MOBILE_TYPE, Prefs.DEF_SHOW_MOBILE_TYPE)
@@ -524,6 +553,10 @@ public final class TrioSettings {
         s.chargeValueSize = chargeValueSize;
         s.chargeSignalSize = chargeSignalSize;
         s.chargeSuffixAScale = chargeSuffixAScale;
+
+        s.capsuleRight = capsuleRight;
+        s.capsuleGap = capsuleGap;
+        s.capsuleBoltPos = capsuleBoltPos;
 
         s.ringStroke = ringStroke;
         s.arcStroke = arcStroke;
@@ -571,6 +604,7 @@ public final class TrioSettings {
         if (src == null || key == null) {
             return false;
         }
+        key = Prefs.baseKey(key);
         switch (key) {
             case Prefs.KEY_ENABLED: enabled = src.enabled; return true;
             case Prefs.KEY_SHOW_WIFI: showWifi = src.showWifi; return true;
@@ -599,6 +633,9 @@ public final class TrioSettings {
             case Prefs.KEY_CHARGE_VALUE_SIZE: chargeValueSize = src.chargeValueSize; return true;
             case Prefs.KEY_CHARGE_SIGNAL_SIZE: chargeSignalSize = src.chargeSignalSize; return true;
             case Prefs.KEY_CHARGE_SUFFIX_A_SCALE: chargeSuffixAScale = src.chargeSuffixAScale; return true;
+            case Prefs.KEY_CAPSULE_RIGHT: capsuleRight = src.capsuleRight; return true;
+            case Prefs.KEY_CAPSULE_GAP: capsuleGap = src.capsuleGap; return true;
+            case Prefs.KEY_CAPSULE_BOLT_POS: capsuleBoltPos = src.capsuleBoltPos; return true;
             case Prefs.KEY_RING_STROKE: ringStroke = src.ringStroke; return true;
             case Prefs.KEY_ARC_STROKE: arcStroke = src.arcStroke; return true;
             case Prefs.KEY_VALUE_SIZE: valueSize = src.valueSize; return true;
@@ -646,14 +683,17 @@ public final class TrioSettings {
         s.showMobile = bundle.getBoolean(Prefs.KEY_SHOW_MOBILE, Prefs.DEF_SHOW_MOBILE);
         s.showValue = bundle.getBoolean(Prefs.KEY_SHOW_VALUE, Prefs.DEF_SHOW_VALUE);
         s.showBolt = bundle.getBoolean(Prefs.KEY_SHOW_BOLT, Prefs.DEF_SHOW_BOLT);
-        s.mobileTypeMode = readMobileTypeMode(bundle);
-        s.valueCentred = bundle.getBoolean(Prefs.KEY_VALUE_CENTRED, Prefs.DEF_VALUE_CENTRED);
-        s.trioStyle = Prefs.clamp(
+        // 先确定样式，下面所有几何/位置字段按当前命名空间（cap_ 或原键）读取。
+        final int style = Prefs.clamp(
                 bundle.getInt(Prefs.KEY_TRIO_STYLE, Prefs.DEF_TRIO_STYLE),
                 Prefs.MIN_TRIO_STYLE, Prefs.MAX_TRIO_STYLE);
+        final boolean capsule = style == Prefs.STYLE_CAPSULE;
+        s.trioStyle = style;
+        s.mobileTypeMode = readMobileTypeMode(bundle, Prefs.capKeyAware(Prefs.KEY_MOBILE_TYPE_MODE, capsule));
+        s.valueCentred = bundle.getBoolean(Prefs.capKeyAware(Prefs.KEY_VALUE_CENTRED, capsule), Prefs.DEF_VALUE_CENTRED);
         s.dualSim = bundle.getBoolean(Prefs.KEY_DUAL_SIM, Prefs.DEF_DUAL_SIM);
         s.signalMode = Prefs.clamp(
-                bundle.getInt(Prefs.KEY_SIGNAL_MODE, Prefs.DEF_SIGNAL_MODE),
+                bundle.getInt(Prefs.capKeyAware(Prefs.KEY_SIGNAL_MODE, capsule), Prefs.DEF_SIGNAL_MODE),
                 Prefs.MIN_SIGNAL_MODE, Prefs.MAX_SIGNAL_MODE);
         s.stackedSignal = bundle.getBoolean(Prefs.KEY_STACKED_SIGNAL, Prefs.DEF_STACKED_SIGNAL);
         s.dataSimOnly = bundle.getBoolean(Prefs.KEY_DATA_SIM_ONLY, Prefs.DEF_DATA_SIM_ONLY);
@@ -670,68 +710,78 @@ public final class TrioSettings {
                 bundle.getInt(Prefs.KEY_LOW_THRESHOLD, Prefs.DEF_LOW_THRESHOLD),
                 Prefs.MIN_LOW_THRESHOLD, Prefs.MAX_LOW_THRESHOLD);
         s.powerSaveColor = bundle.getBoolean(Prefs.KEY_POWER_SAVE_COLOR, Prefs.DEF_POWER_SAVE_COLOR);
-        s.chargePairMode = readPairMode(bundle, Prefs.KEY_CHARGE_PAIR_MODE,
+        s.chargePairMode = readPairMode(bundle, Prefs.capKeyAware(Prefs.KEY_CHARGE_PAIR_MODE, capsule),
                 Prefs.KEY_CHARGE_WITH_VALUE, true);
         s.chargeSignalAlso = bundle.getBoolean(
-                Prefs.KEY_CHARGE_SIGNAL_ALSO, Prefs.DEF_CHARGE_SIGNAL_ALSO);
+                Prefs.capKeyAware(Prefs.KEY_CHARGE_SIGNAL_ALSO, capsule), Prefs.DEF_CHARGE_SIGNAL_ALSO);
         s.chargeValueSize = Prefs.clamp(
-                bundle.getInt(Prefs.KEY_CHARGE_VALUE_SIZE, Prefs.DEF_CHARGE_VALUE_SIZE),
+                bundle.getInt(Prefs.capKeyAware(Prefs.KEY_CHARGE_VALUE_SIZE, capsule), Prefs.DEF_CHARGE_VALUE_SIZE),
                 Prefs.MIN_CHARGE_VALUE_SIZE, Prefs.MAX_CHARGE_VALUE_SIZE);
         s.chargeSignalSize = Prefs.clamp(
-                bundle.getInt(Prefs.KEY_CHARGE_SIGNAL_SIZE, Prefs.DEF_CHARGE_SIGNAL_SIZE),
+                bundle.getInt(Prefs.capKeyAware(Prefs.KEY_CHARGE_SIGNAL_SIZE, capsule), Prefs.DEF_CHARGE_SIGNAL_SIZE),
                 Prefs.MIN_CHARGE_SIGNAL_SIZE, Prefs.MAX_CHARGE_SIGNAL_SIZE);
         s.chargeSuffixAScale = Prefs.clamp(
-                bundle.getInt(Prefs.KEY_CHARGE_SUFFIX_A_SCALE, Prefs.DEF_CHARGE_SUFFIX_A_SCALE),
+                bundle.getInt(Prefs.capKeyAware(Prefs.KEY_CHARGE_SUFFIX_A_SCALE, capsule), Prefs.DEF_CHARGE_SUFFIX_A_SCALE),
                 Prefs.MIN_CHARGE_SUFFIX_A_SCALE, Prefs.MAX_CHARGE_SUFFIX_A_SCALE);
 
+        s.capsuleRight = Prefs.clamp(
+                bundle.getInt(Prefs.KEY_CAPSULE_RIGHT, Prefs.DEF_CAPSULE_RIGHT),
+                Prefs.MIN_CAPSULE_RIGHT, Prefs.MAX_CAPSULE_RIGHT);
+        s.capsuleGap = Prefs.clamp(
+                bundle.getInt(Prefs.KEY_CAPSULE_GAP, Prefs.DEF_CAPSULE_GAP),
+                Prefs.MIN_CAPSULE_GAP, Prefs.MAX_CAPSULE_GAP);
+        s.capsuleBoltPos = Prefs.clamp(
+                bundle.getInt(Prefs.KEY_CAPSULE_BOLT_POS, Prefs.DEF_CAPSULE_BOLT_POS),
+                Prefs.MIN_CAPSULE_BOLT_POS, Prefs.MAX_CAPSULE_BOLT_POS);
+
         s.ringStroke = Prefs.clamp(
-                bundle.getInt(Prefs.KEY_RING_STROKE, Prefs.DEF_RING_STROKE),
+                bundle.getInt(Prefs.capKeyAware(Prefs.KEY_RING_STROKE, capsule), Prefs.DEF_RING_STROKE),
                 Prefs.MIN_RING_STROKE, Prefs.MAX_RING_STROKE);
         s.arcStroke = Prefs.clamp(
-                bundle.getInt(Prefs.KEY_ARC_STROKE, Prefs.DEF_ARC_STROKE),
+                bundle.getInt(Prefs.capKeyAware(Prefs.KEY_ARC_STROKE, capsule), Prefs.DEF_ARC_STROKE),
                 Prefs.MIN_ARC_STROKE, Prefs.MAX_ARC_STROKE);
         s.valueSize = Prefs.clamp(
-                bundle.getInt(Prefs.KEY_VALUE_SIZE, Prefs.DEF_VALUE_SIZE),
+                bundle.getInt(Prefs.capKeyAware(Prefs.KEY_VALUE_SIZE, capsule), Prefs.DEF_VALUE_SIZE),
                 Prefs.MIN_VALUE_SIZE, Prefs.MAX_VALUE_SIZE);
         s.valueWeight = Prefs.clamp(
-                bundle.getInt(Prefs.KEY_VALUE_WEIGHT, Prefs.DEF_VALUE_WEIGHT),
+                bundle.getInt(Prefs.capKeyAware(Prefs.KEY_VALUE_WEIGHT, capsule), Prefs.DEF_VALUE_WEIGHT),
                 Prefs.MIN_VALUE_WEIGHT, Prefs.MAX_VALUE_WEIGHT);
         s.typeSize = Prefs.clamp(
-                bundle.getInt(Prefs.KEY_TYPE_SIZE, Prefs.DEF_TYPE_SIZE),
+                bundle.getInt(Prefs.capKeyAware(Prefs.KEY_TYPE_SIZE, capsule), Prefs.DEF_TYPE_SIZE),
                 Prefs.MIN_TYPE_SIZE, Prefs.MAX_TYPE_SIZE);
         s.outTypeSize = Prefs.clamp(
-                bundle.getInt(Prefs.KEY_OUT_TYPE_SIZE_DP, Prefs.DEF_OUT_TYPE_SIZE_DP),
+                bundle.getInt(Prefs.capKeyAware(Prefs.KEY_OUT_TYPE_SIZE_DP, capsule), Prefs.DEF_OUT_TYPE_SIZE_DP),
                 Prefs.MIN_OUT_TYPE_SIZE_DP, Prefs.MAX_OUT_TYPE_SIZE_DP);
         s.outSignalSize = Prefs.clamp(
-                bundle.getInt(Prefs.KEY_OUT_SIGNAL_SIZE, Prefs.DEF_OUT_SIGNAL_SIZE),
+                bundle.getInt(Prefs.capKeyAware(Prefs.KEY_OUT_SIGNAL_SIZE, capsule), Prefs.DEF_OUT_SIGNAL_SIZE),
                 Prefs.MIN_OUT_SIGNAL_SIZE, Prefs.MAX_OUT_SIGNAL_SIZE);
         s.outTypeMarginLeft = Prefs.clamp(
-                bundle.getInt(Prefs.KEY_OUT_TYPE_MARGIN_LEFT, Prefs.DEF_OUT_TYPE_MARGIN_LEFT),
+                bundle.getInt(Prefs.capKeyAware(Prefs.KEY_OUT_TYPE_MARGIN_LEFT, capsule), Prefs.DEF_OUT_TYPE_MARGIN_LEFT),
                 Prefs.MIN_OUT_TYPE_MARGIN, Prefs.MAX_OUT_TYPE_MARGIN);
         s.outTypeMarginRight = Prefs.clamp(
-                bundle.getInt(Prefs.KEY_OUT_TYPE_MARGIN_RIGHT, Prefs.DEF_OUT_TYPE_MARGIN_RIGHT),
+                bundle.getInt(Prefs.capKeyAware(Prefs.KEY_OUT_TYPE_MARGIN_RIGHT, capsule), Prefs.DEF_OUT_TYPE_MARGIN_RIGHT),
                 Prefs.MIN_OUT_TYPE_MARGIN, Prefs.MAX_OUT_TYPE_MARGIN);
         s.outSignalMargin = Prefs.clamp(
-                bundle.getInt(Prefs.KEY_OUT_SIGNAL_MARGIN, Prefs.DEF_OUT_SIGNAL_MARGIN),
+                bundle.getInt(Prefs.capKeyAware(Prefs.KEY_OUT_SIGNAL_MARGIN, capsule), Prefs.DEF_OUT_SIGNAL_MARGIN),
                 Prefs.MIN_OUT_SIGNAL_MARGIN, Prefs.MAX_OUT_SIGNAL_MARGIN);
         s.glyphLeftOffset = Prefs.clamp(
-                bundle.getInt(Prefs.KEY_GLYPH_LEFT_OFFSET, Prefs.DEF_GLYPH_LEFT_OFFSET),
+                bundle.getInt(Prefs.capKeyAware(Prefs.KEY_GLYPH_LEFT_OFFSET, capsule), Prefs.DEF_GLYPH_LEFT_OFFSET),
                 Prefs.MIN_GLYPH_LEFT_OFFSET, Prefs.MAX_GLYPH_LEFT_OFFSET);
         s.glyphShift = Prefs.clamp(
-                bundle.getInt(Prefs.KEY_GLYPH_SHIFT, Prefs.DEF_GLYPH_SHIFT),
+                bundle.getInt(Prefs.capKeyAware(Prefs.KEY_GLYPH_SHIFT, capsule), Prefs.DEF_GLYPH_SHIFT),
                 Prefs.MIN_GLYPH_SHIFT, Prefs.MAX_GLYPH_SHIFT);
-        s.perfTemp = bundle.getBoolean(Prefs.KEY_PERF_TEMP, Prefs.DEF_PERF_TEMP);
+        s.perfTemp = bundle.getBoolean(Prefs.capKeyAware(Prefs.KEY_PERF_TEMP, capsule), Prefs.DEF_PERF_TEMP);
         s.perfOuterMargin = Prefs.clamp(
-                bundle.getInt(Prefs.KEY_PERF_OUTER_MARGIN, Prefs.DEF_PERF_OUTER_MARGIN),
+                bundle.getInt(Prefs.capKeyAware(Prefs.KEY_PERF_OUTER_MARGIN, capsule), Prefs.DEF_PERF_OUTER_MARGIN),
                 Prefs.MIN_PERF_OUTER_MARGIN, Prefs.MAX_PERF_OUTER_MARGIN);
         s.perfOuterMarginRight = Prefs.clamp(
-                bundle.getInt(Prefs.KEY_PERF_OUTER_MARGIN_RIGHT, Prefs.DEF_PERF_OUTER_MARGIN_RIGHT),
+                bundle.getInt(Prefs.capKeyAware(Prefs.KEY_PERF_OUTER_MARGIN_RIGHT, capsule), Prefs.DEF_PERF_OUTER_MARGIN_RIGHT),
                 Prefs.MIN_PERF_OUTER_MARGIN_RIGHT, Prefs.MAX_PERF_OUTER_MARGIN_RIGHT);
         s.perfScale = Prefs.clamp(
-                bundle.getInt(Prefs.KEY_PERF_SCALE, Prefs.DEF_PERF_SCALE),
+                bundle.getInt(Prefs.capKeyAware(Prefs.KEY_PERF_SCALE, capsule), Prefs.DEF_PERF_SCALE),
                 Prefs.MIN_PERF_SCALE, Prefs.MAX_PERF_SCALE);
         s.perfWeight = Prefs.clamp(
-                bundle.getInt(Prefs.KEY_PERF_WEIGHT, Prefs.DEF_PERF_WEIGHT),
+                bundle.getInt(Prefs.capKeyAware(Prefs.KEY_PERF_WEIGHT, capsule), Prefs.DEF_PERF_WEIGHT),
                 Prefs.MIN_PERF_WEIGHT, Prefs.MAX_PERF_WEIGHT);
         // ★ v80：同 from(SharedPreferences) —— 广播这条路也要把「独立窗口绘制」
         //   关着时的 130% 压回 100%，否则 SystemUI 侧与设置页看到的值会不一致。
@@ -739,7 +789,7 @@ public final class TrioSettings {
                 ? Prefs.MAX_GLYPH_SCALE
                 : Prefs.MAX_GLYPH_SCALE_TREE;
         s.glyphScale = Prefs.clamp(
-                bundle.getInt(Prefs.KEY_GLYPH_SCALE, Prefs.DEF_GLYPH_SCALE),
+                bundle.getInt(Prefs.capKeyAware(Prefs.KEY_GLYPH_SCALE, capsule), Prefs.DEF_GLYPH_SCALE),
                 Prefs.MIN_GLYPH_SCALE, bundleScaleCap);
         s.burnInProtect = bundle.getBoolean(Prefs.KEY_BURN_IN_PROTECT, Prefs.DEF_BURN_IN_PROTECT);
         s.burnInAmplitude = Prefs.clamp(
@@ -749,13 +799,13 @@ public final class TrioSettings {
                 bundle.getInt(Prefs.KEY_BURN_IN_PERIOD, Prefs.DEF_BURN_IN_PERIOD),
                 Prefs.MIN_BURN_IN_PERIOD, Prefs.MAX_BURN_IN_PERIOD);
         s.typeSuffixScale = Prefs.clamp(
-                bundle.getInt(Prefs.KEY_TYPE_SUFFIX_SCALE, Prefs.DEF_TYPE_SUFFIX_SCALE),
+                bundle.getInt(Prefs.capKeyAware(Prefs.KEY_TYPE_SUFFIX_SCALE, capsule), Prefs.DEF_TYPE_SUFFIX_SCALE),
                 Prefs.MIN_TYPE_SUFFIX_SCALE, Prefs.MAX_TYPE_SUFFIX_SCALE);
         s.typeWeight = Prefs.clamp(
-                bundle.getInt(Prefs.KEY_TYPE_WEIGHT, Prefs.DEF_TYPE_WEIGHT),
+                bundle.getInt(Prefs.capKeyAware(Prefs.KEY_TYPE_WEIGHT, capsule), Prefs.DEF_TYPE_WEIGHT),
                 Prefs.MIN_TYPE_WEIGHT, Prefs.MAX_TYPE_WEIGHT);
         s.trackAlpha = Prefs.clamp(
-                bundle.getInt(Prefs.KEY_TRACK_ALPHA, Prefs.DEF_TRACK_ALPHA),
+                bundle.getInt(Prefs.capKeyAware(Prefs.KEY_TRACK_ALPHA, capsule), Prefs.DEF_TRACK_ALPHA),
                 Prefs.MIN_TRACK_ALPHA, Prefs.MAX_TRACK_ALPHA);
         s.debugLog = bundle.getBoolean(Prefs.KEY_DEBUG_LOG, Prefs.DEF_DEBUG_LOG);
         return s;
@@ -823,16 +873,17 @@ public final class TrioSettings {
      */
     public Bundle toBundle() {
         Bundle b = new Bundle();
+        final boolean capsule = trioStyle == Prefs.STYLE_CAPSULE;
         b.putBoolean(Prefs.KEY_ENABLED, enabled);
         b.putBoolean(Prefs.KEY_SHOW_WIFI, showWifi);
         b.putBoolean(Prefs.KEY_SHOW_MOBILE, showMobile);
         b.putBoolean(Prefs.KEY_SHOW_VALUE, showValue);
         b.putBoolean(Prefs.KEY_SHOW_BOLT, showBolt);
-        b.putInt(Prefs.KEY_MOBILE_TYPE_MODE, mobileTypeMode);
-        b.putBoolean(Prefs.KEY_VALUE_CENTRED, valueCentred);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_MOBILE_TYPE_MODE, capsule), mobileTypeMode);
+        b.putBoolean(Prefs.capKeyAware(Prefs.KEY_VALUE_CENTRED, capsule), valueCentred);
         b.putInt(Prefs.KEY_TRIO_STYLE, trioStyle);
         b.putBoolean(Prefs.KEY_DUAL_SIM, dualSim);
-        b.putInt(Prefs.KEY_SIGNAL_MODE, signalMode);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_SIGNAL_MODE, capsule), signalMode);
         b.putBoolean(Prefs.KEY_STACKED_SIGNAL, stackedSignal);
         b.putBoolean(Prefs.KEY_DATA_SIM_ONLY, dataSimOnly);
         b.putBoolean(Prefs.KEY_OVERLAY, overlayGlyph);
@@ -846,36 +897,40 @@ public final class TrioSettings {
         b.putInt(Prefs.KEY_COLOR_LOW_ON_LIGHT, lowOnLight);
         b.putInt(Prefs.KEY_LOW_THRESHOLD, lowThreshold);
         b.putBoolean(Prefs.KEY_POWER_SAVE_COLOR, powerSaveColor);
-        b.putInt(Prefs.KEY_CHARGE_PAIR_MODE, chargePairMode);
-        b.putBoolean(Prefs.KEY_CHARGE_SIGNAL_ALSO, chargeSignalAlso);
-        b.putInt(Prefs.KEY_CHARGE_VALUE_SIZE, chargeValueSize);
-        b.putInt(Prefs.KEY_CHARGE_SIGNAL_SIZE, chargeSignalSize);
-        b.putInt(Prefs.KEY_CHARGE_SUFFIX_A_SCALE, chargeSuffixAScale);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_CHARGE_PAIR_MODE, capsule), chargePairMode);
+        b.putBoolean(Prefs.capKeyAware(Prefs.KEY_CHARGE_SIGNAL_ALSO, capsule), chargeSignalAlso);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_CHARGE_VALUE_SIZE, capsule), chargeValueSize);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_CHARGE_SIGNAL_SIZE, capsule), chargeSignalSize);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_CHARGE_SUFFIX_A_SCALE, capsule), chargeSuffixAScale);
 
-        b.putInt(Prefs.KEY_RING_STROKE, ringStroke);
-        b.putInt(Prefs.KEY_ARC_STROKE, arcStroke);
-        b.putInt(Prefs.KEY_VALUE_SIZE, valueSize);
-        b.putInt(Prefs.KEY_VALUE_WEIGHT, valueWeight);
-        b.putInt(Prefs.KEY_TYPE_SIZE, typeSize);
-        b.putInt(Prefs.KEY_OUT_TYPE_SIZE_DP, outTypeSize);
-        b.putInt(Prefs.KEY_OUT_SIGNAL_SIZE, outSignalSize);
-        b.putInt(Prefs.KEY_OUT_TYPE_MARGIN_LEFT, outTypeMarginLeft);
-        b.putInt(Prefs.KEY_OUT_TYPE_MARGIN_RIGHT, outTypeMarginRight);
-        b.putInt(Prefs.KEY_OUT_SIGNAL_MARGIN, outSignalMargin);
-        b.putInt(Prefs.KEY_GLYPH_LEFT_OFFSET, glyphLeftOffset);
-        b.putInt(Prefs.KEY_GLYPH_SHIFT, glyphShift);
-        b.putBoolean(Prefs.KEY_PERF_TEMP, perfTemp);
-        b.putInt(Prefs.KEY_PERF_OUTER_MARGIN, perfOuterMargin);
-        b.putInt(Prefs.KEY_PERF_OUTER_MARGIN_RIGHT, perfOuterMarginRight);
-        b.putInt(Prefs.KEY_PERF_SCALE, perfScale);
-        b.putInt(Prefs.KEY_PERF_WEIGHT, perfWeight);
-        b.putInt(Prefs.KEY_GLYPH_SCALE, glyphScale);
+        b.putInt(Prefs.KEY_CAPSULE_RIGHT, capsuleRight);
+        b.putInt(Prefs.KEY_CAPSULE_GAP, capsuleGap);
+        b.putInt(Prefs.KEY_CAPSULE_BOLT_POS, capsuleBoltPos);
+
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_RING_STROKE, capsule), ringStroke);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_ARC_STROKE, capsule), arcStroke);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_VALUE_SIZE, capsule), valueSize);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_VALUE_WEIGHT, capsule), valueWeight);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_TYPE_SIZE, capsule), typeSize);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_OUT_TYPE_SIZE_DP, capsule), outTypeSize);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_OUT_SIGNAL_SIZE, capsule), outSignalSize);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_OUT_TYPE_MARGIN_LEFT, capsule), outTypeMarginLeft);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_OUT_TYPE_MARGIN_RIGHT, capsule), outTypeMarginRight);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_OUT_SIGNAL_MARGIN, capsule), outSignalMargin);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_GLYPH_LEFT_OFFSET, capsule), glyphLeftOffset);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_GLYPH_SHIFT, capsule), glyphShift);
+        b.putBoolean(Prefs.capKeyAware(Prefs.KEY_PERF_TEMP, capsule), perfTemp);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_PERF_OUTER_MARGIN, capsule), perfOuterMargin);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_PERF_OUTER_MARGIN_RIGHT, capsule), perfOuterMarginRight);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_PERF_SCALE, capsule), perfScale);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_PERF_WEIGHT, capsule), perfWeight);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_GLYPH_SCALE, capsule), glyphScale);
         b.putBoolean(Prefs.KEY_BURN_IN_PROTECT, burnInProtect);
         b.putInt(Prefs.KEY_BURN_IN_AMPLITUDE, burnInAmplitude);
         b.putInt(Prefs.KEY_BURN_IN_PERIOD, burnInPeriodSec);
-        b.putInt(Prefs.KEY_TYPE_SUFFIX_SCALE, typeSuffixScale);
-        b.putInt(Prefs.KEY_TYPE_WEIGHT, typeWeight);
-        b.putInt(Prefs.KEY_TRACK_ALPHA, trackAlpha);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_TYPE_SUFFIX_SCALE, capsule), typeSuffixScale);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_TYPE_WEIGHT, capsule), typeWeight);
+        b.putInt(Prefs.capKeyAware(Prefs.KEY_TRACK_ALPHA, capsule), trackAlpha);
 
         b.putBoolean(Prefs.KEY_DEBUG_LOG, debugLog);
         return b;
@@ -932,6 +987,9 @@ public final class TrioSettings {
                 && chargeValueSize == s.chargeValueSize
                 && chargeSignalSize == s.chargeSignalSize
                 && chargeSuffixAScale == s.chargeSuffixAScale
+                && capsuleRight == s.capsuleRight
+                && capsuleGap == s.capsuleGap
+                && capsuleBoltPos == s.capsuleBoltPos
                 && ringStroke == s.ringStroke
                 && arcStroke == s.arcStroke
                 && valueSize == s.valueSize

@@ -22,9 +22,12 @@
     <string name="master_summary">总开关。关闭后隐藏本模块额外绘制的三合一图标；系统原机图标不受影响。</string>
 
     <string name="trio_style_title">三合一样式</string>
-    <string name="trio_style_summary">选择三合一的排布方式。圆环是默认样式；矩形改用左右两列信号点夹住中间内容，底部横贯一条电量条。</string>
+    <string name="trio_style_summary">选择三合一的排布方式。圆环是默认样式；矩形改用左右两列信号点夹住中间内容，底部横贯一条电量条；胶囊把外壳轮廓本身当作电量条，左列固定显示时间，右侧一格按「充电→Wi-Fi→电量→网络制式」的优先级显示一个读数，信号点骑在轮廓上下两条边上。</string>
     <string name="trio_style_ring">圆环</string>
     <string name="trio_style_rect">矩形</string>
+    <string name="trio_style_capsule">胶囊</string>
+
+
 
     <string name="overlay_title">解除尺寸限制</string>
     <string name="overlay_summary">开启后解除 100% 尺寸上限，三合一图标可调到 130%，关闭时最大 100%。</string>
@@ -83,6 +86,25 @@
     <string name="charge_suffix_a_title">组合图标中 A 的大小</string>
     <string name="charge_suffix_a_summary">只在组合图标里显示 5GA 时生效，调整尾部 "A" 相对主字号的百分比。默认 65%，可调范围 50–100%。</string>
     <string name="group_charge_pair">充电组合图标</string>
+    <!-- ★ 胶囊三按钮显式控制（2026-10-21 用户拍板）。仅胶囊样式显示。 -->
+    <string name="group_capsule_buttons">胶囊内容控制</string>
+    <!-- 文案精简（2026-10-22 用户定稿）：去掉「按钮N：」前缀，标题=短名，摘要=一句说明。 -->
+    <string name="capsule_right_title">右侧默认显示组件</string>
+    <string name="capsule_right_summary">电量 或 信号。</string>
+    <string name="capsule_right_value">电量</string>
+    <string name="capsule_right_signal">信号</string>
+    <string name="capsule_gap_title">顶部缺口组件</string>
+    <string name="capsule_gap_summary">选「闪电」只有充电才显示。</string>
+    <string name="capsule_gap_none">隐藏</string>
+    <string name="capsule_gap_bolt">闪电</string>
+    <string name="capsule_gap_value">电量</string>
+    <string name="capsule_gap_signal">信号</string>
+    <string name="capsule_bolt_pos_title">充电时闪电位置</string>
+    <string name="capsule_bolt_pos_summary">隐藏，圈上，圈内。</string>
+    <string name="capsule_bolt_hidden">隐藏</string>
+    <string name="capsule_bolt_gap">圈上</string>
+    <string name="capsule_bolt_gap_pair">圈上+同伴</string>
+    <string name="capsule_bolt_centre_pair">右侧+同伴</string>
     <string name="glyph_left_offset_title">整组左侧间距</string>
     <string name="glyph_left_offset_summary">调整原生状态栏到三合一图标的距离。默认 0，可调范围 -8.0～+8.0dp。</string>
 

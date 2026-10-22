@@ -22,9 +22,12 @@
     <string name="master_summary">Master switch. Turning it off hides the trio icon this module draws; the stock icons are untouched.</string>
 
     <string name="trio_style_title">Trio style</string>
-    <string name="trio_style_summary">Which arrangement to draw. The ring is the default; the rectangular one puts a column of signal dots on each side of the centre and a battery bar across the bottom.</string>
+    <string name="trio_style_summary">Which arrangement to draw. The ring is the default; the rectangular one puts a column of signal dots on each side of the centre and a battery bar across the bottom; the capsule makes the outline itself the battery bar, keeps the time in a fixed left column, shows one reading on the right by priority (charging, Wi-Fi, percentage, network type) and rides the signal dots on the outline\'s top and bottom edges.</string>
     <string name="trio_style_ring">Ring</string>
     <string name="trio_style_rect">Rectangular</string>
+    <string name="trio_style_capsule">Capsule</string>
+
+
 
     <string name="overlay_title">Draw in its own window</string>
     <string name="overlay_summary">Stops the status bar window height from clipping the trio icon. Turn off to draw inside the bar again. It is also the gate for the trio size: only with it on can the size reach 100-130%; with it off the maximum is 100%.</string>
@@ -83,6 +86,23 @@
     <string name="charge_suffix_a_title">"A" size in the pair</string>
     <string name="charge_suffix_a_summary">Applies only when the pair shows 5GA: size of the trailing "A" as a percentage of the main size. Default 65%, range 50-100%.</string>
     <string name="group_charge_pair">Charging pair</string>
+    <string name="group_capsule_buttons">Capsule content</string>
+    <string name="capsule_right_title">Right column</string>
+    <string name="capsule_right_summary">Battery value or signal.</string>
+    <string name="capsule_right_value">Value</string>
+    <string name="capsule_right_signal">Signal</string>
+    <string name="capsule_gap_title">Top opening</string>
+    <string name="capsule_gap_summary">Pick \"Bolt\" to show it only while charging.</string>
+    <string name="capsule_gap_none">Hidden</string>
+    <string name="capsule_gap_bolt">Bolt</string>
+    <string name="capsule_gap_value">Value</string>
+    <string name="capsule_gap_signal">Signal</string>
+    <string name="capsule_bolt_pos_title">Charging bolt position</string>
+    <string name="capsule_bolt_pos_summary">Hidden, on the ring, inside the ring.</string>
+    <string name="capsule_bolt_hidden">Hidden</string>
+    <string name="capsule_bolt_gap">On ring</string>
+    <string name="capsule_bolt_gap_pair">On ring + companion</string>
+    <string name="capsule_bolt_centre_pair">Right + companion</string>
     <string name="glyph_left_offset_title">Group left offset</string>
     <string name="glyph_left_offset_summary">Distance from the native status bar icons to the trio icon. Default 0, range -8.0 to +8.0dp.</string>
 

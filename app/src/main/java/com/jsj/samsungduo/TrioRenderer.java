@@ -9,6 +9,9 @@ import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.view.View;
 
+import java.util.Calendar;
+import java.util.Locale;
+
 /**
  * Draws the "trio" glyph (battery ring + Wi-Fi arcs + signal dots + level indicator)
  * into a host view's canvas, in the 120x120 design space of {@link TrioGeometry}.
@@ -16,6 +19,14 @@ import android.view.View;
 final class TrioRenderer {
 
     private TrioRenderer() {
+    }
+
+    /** Whether the user's clock is 24-hour; null until the host tells us. */
+    private static Boolean sIs24Hour;
+
+    /** Called by the host with the system's 12/24-hour setting. */
+    static void set24Hour(boolean is24Hour) {
+        sIs24Hour = Boolean.valueOf(is24Hour);
     }
 
     private static final Paint STROKE = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -127,6 +138,10 @@ final class TrioRenderer {
         // The two arrangements have different ink extents, so each is fitted to
         // the host view with its own box.
         final boolean rect = appearance.rect;
+        // ★ 胶囊必须用自己的墨迹盒拟合：它的宿主是 2.17:1 的宽扁形，若沿用圆环的
+        //   117×117.5 方盒，min(w/117, h/117.5) 会被高度卡住，胶囊只画到约 54%
+        //   宽度、两侧留大片空白 —— 这正是"大小不对"的根因。
+        final boolean capsule = appearance.capsule;
         // ★ v73：「整体尺寸」≤100% 时只缩绘制、不动视图 —— 视图那一块是占位，
         //   动了就会挤压原生图标。所以乘在**统一的 scale** 上（与 INK_INSET
         //   同一个位置），描边/弧线/数字/信号点/环内类型字号一起缩。
@@ -134,7 +149,7 @@ final class TrioRenderer {
         // ★ v75：>100% 时视图已随之一起放大（wantWidth 含 scale，否则墨迹
         //   超出视图画布会被 View 自身 canvas 裁掉），这里**不能再乘**
         //   glyphFit —— 双重缩放会让墨迹重新超出视图，前功尽弃。
-        final float scale = inkScale(w, h, rect)
+        final float scale = inkScale(w, h, capsule, rect)
                 * ((cfg.glyphScale > 100) ? 1f : appearance.glyphFit());
         if (scale <= 0f) {
             return;
@@ -159,7 +174,11 @@ final class TrioRenderer {
                 : (slots[0] >= 0 ? 1 : 0) + (slots[1] >= 0 ? 1 : 0);
 
         final int save = canvas.save();
-        if (rect) {
+        if (capsule) {
+            canvas.translate(
+                    (w - TrioGeometry.CAP_INK_W * scale) / 2f - TrioGeometry.CAP_INK_X * scale,
+                    (h - TrioGeometry.CAP_INK_H * scale) / 2f - TrioGeometry.CAP_INK_Y * scale);
+        } else if (rect) {
             canvas.translate(
                     (w - TrioGeometry.RECT_INK_W * scale) / 2f - TrioGeometry.RECT_INK_X * scale,
                     (h - TrioGeometry.RECT_INK_H * scale) / 2f - TrioGeometry.RECT_INK_Y * scale);
@@ -170,7 +189,10 @@ final class TrioRenderer {
         }
         canvas.scale(scale, scale);
 
-        if (rect) {
+        if (capsule) {
+            drawCapsuleLayout(canvas, level, charging, quickCharging, wifiLevel, mobileLevel,
+                    slots, sims, mobileType, role, fg, appearance);
+        } else if (rect) {
             drawRectLayout(canvas, level, charging, quickCharging, wifiLevel, mobileLevel,
                     slots, sims, mobileType, role, fg, appearance);
         } else {
@@ -1407,6 +1429,17 @@ final class TrioRenderer {
     }
 
     /**
+     * 胶囊用自己的宽扁墨迹盒（CAP_INK_W×CAP_INK_H）拟合；圆环/矩形不变。
+     * 宿主高度含开口带，但比例由宽度定（见 drawInto），故这里用**墨迹盒**而非含带盒。
+     */
+    static float inkScale(int w, int h, boolean capsule, boolean rect) {
+        if (capsule) {
+            return inkScale(w, h, TrioGeometry.CAP_INK_W, TrioGeometry.CAP_INK_H);
+        }
+        return inkScale(w, h, rect);
+    }
+
+    /**
      * ★ v51：适配余量。先按墨迹框算出"填满宿主"的比例，再整体乘 0.94 并居中。
      *
      * <p><b>为什么必须有这个余量</b>：{@code inkScale} 取 {@code min(w/INK_W, h/INK_H)}，
@@ -1508,4 +1541,585 @@ final class TrioRenderer {
                 + 0.0722f * Color.blue(color)) / 255f;
         return lum > 0.5f;
     }
+
+
+    // =====================================================================
+    // 胶囊（CAPSULE）：跑道形外框 + 两行内容 + 底部信号点。
+    //
+    // 规则只有四条，全部与圆环同源（Ring 已经把该放哪一件算好了）：
+    //   1) 轮廓 = 跑道形；底部中央留一个点行开口；顶部只有卡二点行时才断开；
+    //   2) 第一行（顶部）= 圆环**缺口**里那一件：闪电 / 闪电+读数 / 电量 / 类型；
+    //      Wi-Fi 弧**不放这里**（它高 39.65，第一行放不下）；
+    //   3) 第二行 = 圆环**环心**里那件：时间在左列，读数在右列（**右对齐**到内缘）；
+    //   4) 字号：时间、电量、类型统一取 max(valueSize, typeSize)，Wi-Fi 用图标高。
+    // =====================================================================
+
+    // =====================================================================
+    //  胶囊（STYLE_CAPSULE）—— 整体系移植上游 HyperDuo v1.7 图形
+    //  · 电量填充用 run()/cap() 逐段走线（不画闭合路径 → 无多余直线）
+    //  · 三车道 Zone（TOP=缺口 / CENTRE=环心右列 / BOTTOM=底部信号点）各持一件，
+    //    天然不重叠（WIFI 不再压电量数字）
+    //  · 开口件落在轮廓线 capOpeningCy，宿主高度含开口带 capHostHeightPx → 尺寸正确
+    //  · 取色：全程走 fg / role（与圆环同一条 foreground() 链），无胶囊专属默认黑
+    // =====================================================================
+
+    /** 胶囊宿主宽度：给定状态栏高度 edge，按墨迹盒宽高比换算。 */
+    static int capsuleViewWidth(int edge) {
+        return Math.round(edge * TrioGeometry.CAP_INK_W / TrioGeometry.CAP_INK_H);
+    }
+
+    /** 胶囊宿主高度：在墨迹盒基础上含上下两条开口带（宽度不变 ⇒ 胶囊本体大小不变）。 */
+    static int capsuleViewHeight(int width) {
+        return Math.round(width * (TrioGeometry.CAP_INK_BOTTOM - TrioGeometry.CAP_INK_TOP)
+                / TrioGeometry.CAP_INK_W);
+    }
+
+    private static void drawCapsuleLayout(Canvas canvas, int level, boolean charging,
+                                          boolean quickCharging, int wifiLevel, int mobileLevel,
+                                          int[] slotLevels, int sims, String mobileType,
+                                          int role, int fg, TrioAppearance a) {
+        final float stroke = a.ringStroke * TrioGeometry.CAP_STROKE_RATIO;
+        final TrioAppearance.Capsule cap =
+                a.capsule(level, charging, wifiLevel, mobileType, sims);
+
+        STROKE.setStrokeWidth(stroke);
+        STROKE.setStyle(Paint.Style.STROKE);
+        final float topReach =
+                openingReach(cap, TrioAppearance.Zone.TOP, stroke, level, mobileType, a);
+        final float bottomReach =
+                openingReach(cap, TrioAppearance.Zone.BOTTOM, stroke, level, mobileType, a);
+        final Path outline = new Path();
+        buildCapsuleOutline(outline, topReach, bottomReach);
+        STROKE.setColor(withAlpha(fg, a.trackAlpha));
+        canvas.drawPath(outline, STROKE);
+
+        if (level > 0) {
+            STROKE.setColor(role);
+            drawCapsuleFill(canvas, stroke, Math.min(1f, level / 100f), topReach, bottomReach);
+        }
+
+        if (cap.dots) {
+            drawCapsuleDots(canvas, mobileLevel, slotLevels, cap.dual, stroke, fg, a, cap);
+        }
+
+        // 时钟固定左列，独立于三车道（与上游一致）。
+        drawCapsuleTime(canvas, stroke, fg, a,
+                TrioGeometry.capLeftCx(stroke), TrioGeometry.capInteriorCy(stroke), -1f);
+
+        drawCapsuleCell(canvas, stroke, TrioAppearance.Zone.TOP, cap, level, quickCharging,
+                wifiLevel, mobileType, fg, a);
+        drawCapsuleCell(canvas, stroke, TrioAppearance.Zone.CENTRE, cap, level, quickCharging,
+                wifiLevel, mobileType, fg, a);
+        drawCapsuleCell(canvas, stroke, TrioAppearance.Zone.BOTTOM, cap, level, quickCharging,
+                wifiLevel, mobileType, fg, a);
+    }
+
+    /**
+     * 画某车道（Zone）里那件东西，落在该车道自己的中心。
+     * TOP/BOTTOM 开口件居中于开口（capOpeningCy，骑在轮廓线上）；CENTRE 落在内部右列。
+     */
+    private static void drawCapsuleCell(Canvas c, float stroke, TrioAppearance.Zone band,
+                                        TrioAppearance.Capsule cap, int level,
+                                        boolean quickCharging, int wifiLevel, String type,
+                                        int fg, TrioAppearance a) {
+        final int part = cap.parts[band.ordinal()];
+        // 充电闪电成组：缺口档(pairTop)画「闪电+同伴」；右列档(pairCentre)画「闪电+按钮1那件」。
+        final boolean pairHere = ((band == TrioAppearance.Zone.TOP && cap.pairTop)
+                || (band == TrioAppearance.Zone.CENTRE && cap.pairCentre))
+                && cap.pairMate != Prefs.PART_NONE;
+        if (part == Prefs.PART_NONE && !pairHere) {
+            return;
+        }
+        final float cx = (band == TrioAppearance.Zone.TOP || band == TrioAppearance.Zone.BOTTOM)
+                ? (TrioGeometry.CAP_INK_X + TrioGeometry.CAP_INK_W * 0.5f)
+                : TrioGeometry.capRightCx(stroke);
+        final float cy;
+        switch (band) {
+            case TOP:
+                cy = TrioGeometry.capOpeningCy(true, stroke) + TrioGeometry.CAP_TOP_OPEN_DROP;
+                break;
+            case BOTTOM:
+                cy = TrioGeometry.capOpeningCy(false, stroke);
+                break;
+            default:
+                cy = TrioGeometry.capInteriorCy(stroke);
+                break;
+        }
+        if (pairHere) {
+            final int mate = cap.pairMate;
+            drawCapsulePair(c, mate, cx, cy,
+                    capsulePairDrawSize(band, mate, stroke, level, type, a),
+                    level, type, wifiLevel, stroke,
+                    quickCharging ? TrioGeometry.QUICK_CHARGE : fg, fg, a);
+            return;
+        }
+        switch (part) {
+            case Prefs.PART_BOLT:
+                // 缺口里的单件闪电按开口带高度（与圆环单件同尺寸；右列无单件闪电）。
+                drawCapsuleBolt(c, cx, cy,
+                        (band == TrioAppearance.Zone.TOP)
+                                ? TrioGeometry.capOpeningTextRoomH(stroke)
+                                : TrioGeometry.CAP_ICON_H,
+                        quickCharging ? TrioGeometry.QUICK_CHARGE : fg);
+                break;
+            case Prefs.PART_WIFI:
+                // ★ 分车道给高度：开口带（TOP/BOTTOM）用开口可用墨高，内部右列
+                //   用内部高度 —— 旧代码不分车道，缺口 Wi-Fi 也按内部高度算，
+                //   在矮开口带里必然糊。
+                drawCapsuleWifi(c, cx, cy,
+                        (band == TrioAppearance.Zone.CENTRE)
+                                ? Math.min(TrioGeometry.CAP_ICON_H,
+                                        TrioGeometry.capInteriorHeight(stroke))
+                                : TrioGeometry.capOpeningTextRoomH(stroke),
+                        fg, a, wifiLevel);
+                break;
+            case Prefs.PART_VALUE:
+                drawCapsuleValue(c, stroke, level, fg, a, cx, cy, openingRoom(band, stroke));
+                break;
+            case Prefs.PART_TYPE:
+                drawCapsuleType(c, stroke, type, fg, a, cx, cy, openingRoom(band, stroke));
+                break;
+            default:
+                break;
+        }
+    }
+
+    /** 文本适配的垂直上限：-1 = 内部自带上限，否则开口带的 em 上限。 */
+    private static float effectiveHeightLimit(float hint, float stroke) {
+        return hint < 0f ? TrioGeometry.capTextMaxSize(stroke) : hint;
+    }
+
+    /**
+     * 开口件宽度（整行）or 内部槽宽：开口是横贯胶囊的一整行（capOpeningWidth），
+     * 内部才是时钟/电量两个槽。heightHint≥0 ⇒ 开口；-1 ⇒ 内部。
+     */
+    private static float capsuleSlotWidth(TrioAppearance.Zone band, float heightHint,
+                                          float stroke, boolean clock) {
+        if (heightHint >= 0f) {
+            return TrioGeometry.capOpeningWidth();
+        }
+        return clock ? TrioGeometry.capTimeSlotWidth(stroke) : TrioGeometry.capValueSlotWidth(stroke);
+    }
+
+    /** 该车道的文本垂直房间：CENTRE=-1（内部自带），开口=capOpeningTextEm。 */
+    private static float openingRoom(TrioAppearance.Zone band, float stroke) {
+        return band == TrioAppearance.Zone.CENTRE
+                ? -1f
+                : TrioGeometry.capOpeningTextEm(stroke);
+    }
+
+    /**
+     * 开口处轮廓退让多少：这一帧该车道实际画的那件的半宽 + 点间隙 + 半个描边。
+     * 载点行⇒点行宽；空⇒0（轮廓闭合）。
+     */
+    private static float openingReach(TrioAppearance.Capsule cap, TrioAppearance.Zone band,
+                                      float stroke, int level, String type, TrioAppearance a) {
+        if (cap == null) {
+            return 0f;
+        }
+        if (cap.dotsIn(band)) {
+            return TrioGeometry.capDotReach(stroke);
+        }
+        final int part = cap.parts[band.ordinal()];
+        if (part == Prefs.PART_NONE) {
+            return 0f;
+        }
+        // 成组（闪电+同伴）落在缺口：开口必须容纳整组（含同伴半宽），否则同伴
+        // 画出开口压在实线上 —— 用户实测"缺口太小、重叠了"。
+        if ((band == TrioAppearance.Zone.TOP && cap.pairTop)
+                || (band == TrioAppearance.Zone.CENTRE && cap.pairCentre)) {
+            return capPairHalf(cap.pairMate, stroke, level, type, a, band)
+                    + TrioGeometry.capDotClearance() + stroke * 0.5f
+                    + TrioGeometry.CAP_OPENING_EXTRA;
+        }
+        return TrioGeometry.capPieceReach(part, level, type, stroke,
+                TrioGeometry.capOpeningTextRoomH(stroke))
+                + TrioGeometry.capDotClearance() + stroke * 0.5f
+                + TrioGeometry.CAP_OPENING_EXTRA;
+    }
+
+    /**
+     * 「闪电+同伴」整组在该车道<b>实际绘制</b>用的字号（设计单位）。
+     *
+     * <p>★ 轮廓让位（{@link #capPairHalf}）与这里必须吃同一个数：此前绘制端为了
+     * 「充电/不充电信号同高」（10-21 修复）按开口带高度封了顶，让位端却仍用未封顶的
+     * {@code base}，于是 Wi-Fi 同伴的缺口比真画出来的宽出一圈 —— 用户实测
+     * 「闪电+wifi 时左右开口大了点」；换成 5GA 时文本宽度自身已按槽收敛，反而不明显。
+     */
+    private static float capsulePairDrawSize(TrioAppearance.Zone band, int mate, float stroke,
+                                             int level, String type, TrioAppearance a) {
+        final float base = capsulePairBaseSize(mate, stroke, level, type, a);
+        final float avail = (band == TrioAppearance.Zone.CENTRE)
+                ? TrioGeometry.capValueSlotWidth(stroke)
+                : TrioGeometry.capOpeningWidth();
+        final float size = fitPairSize(mate, base, avail, level, type, a);
+        // ★ 缺口(pairTop)整组按开口带高度封顶：同伴信号/电量与「不充电单件」同字号
+        //   （之前同伴走内部高度 ⇒ 充电比不充电大一圈，用户实测大小不一）。
+        return (band == TrioAppearance.Zone.TOP)
+                ? Math.min(size, TrioGeometry.capOpeningTextRoomH(stroke)
+                        / TrioGeometry.CAP_HEIGHT_RATIO)
+                : size;
+    }
+
+    /**
+     * 「闪电+同伴」整组相对中心点的半宽（设计单位），与 {@link #drawCapsulePair}
+     * 同基准：boltW + gap + mateW 的一半。超出该车道可用宽度时按 {@link #fitPairSize}
+     * 同比例收缩，故半宽 = min(基准半宽, 可用宽/2)。同伴为空（仅闪电）时退回闪电半宽。
+     */
+    private static float capPairHalf(int mate, float stroke, int level, String type,
+                                     TrioAppearance a, TrioAppearance.Zone band) {
+        if (mate == Prefs.PART_NONE) {
+            return TrioGeometry.BOLT_INK_W * TrioGeometry.capBoltScale(stroke) * 0.5f;
+        }
+        final float size = capsulePairDrawSize(band, mate, stroke, level, type, a);
+        final float capH = size * TrioGeometry.CAP_HEIGHT_RATIO;
+        final float boltW = TrioGeometry.BOLT_INK_W * (capH / TrioGeometry.BOLT_INK_H);
+        final float mateW = capsuleReadingWidth(mate, level, type, size, a);
+        final float halfBase = (boltW + TrioGeometry.CAP_PAIR_GAP + mateW) * 0.5f;
+        final float avail = (band == TrioAppearance.Zone.CENTRE)
+                ? TrioGeometry.capValueSlotWidth(stroke) : TrioGeometry.capOpeningWidth();
+        return Math.min(halfBase, avail * 0.5f);
+    }
+
+    /**
+     * 胶囊轮廓（体育场形），顶/底各按 reach 开口。两个开子路径，端帽用两段
+     * 四分之一圆贝塞尔 —— 不建闭合路径，不会有多余连线。
+     */
+    private static void buildCapsuleOutline(Path p, float topReach, float bottomReach) {
+        final float left = TrioGeometry.CAP_LEFT;
+        final float right = TrioGeometry.CAP_RIGHT;
+        final float top = TrioGeometry.CAP_TOP;
+        final float bottom = TrioGeometry.CAP_BOTTOM;
+        final float r = TrioGeometry.CAP_RADIUS;
+        final float cy = (top + bottom) * 0.5f;
+        final float cx = (left + right) * 0.5f;
+        final float k = 0.5522847498307936f * r;
+
+        p.reset();
+        p.moveTo(cx + topReach, top);
+        p.lineTo(right - r, top);
+        p.cubicTo(right - r + k, top, right, cy - k, right, cy);
+        p.cubicTo(right, cy + k, right - r + k, bottom, right - r, bottom);
+        p.lineTo(cx + bottomReach, bottom);
+        p.moveTo(cx - bottomReach, bottom);
+        p.lineTo(left + r, bottom);
+        p.cubicTo(left + r - k, bottom, left, cy + k, left, cy);
+        p.cubicTo(left, cy - k, left + r - k, top, left + r, top);
+        p.lineTo(cx - topReach, top);
+    }
+
+    /**
+     * ★ 电量填充：把轮廓当一条线，从底缺口左缘起顺时针逐段走（run 画线 + cap 画弧）。
+     * 逐段画到画布上，不建闭合路径 —— 物理上不可能产生"83% 之后又多一条直线"。
+     */
+    private static void drawCapsuleFill(Canvas c, float stroke, float fraction,
+                                        float topReach, float bottomReach) {
+        final float left = TrioGeometry.CAP_LEFT;
+        final float right = TrioGeometry.CAP_RIGHT;
+        final float top = TrioGeometry.CAP_TOP;
+        final float bottom = TrioGeometry.CAP_BOTTOM;
+        final float r = TrioGeometry.CAP_RADIUS;
+        final float cy = (top + bottom) * 0.5f;
+        final float cx = (left + right) * 0.5f;
+        final float topLeft = (cx - topReach) - (left + r);
+        final float bottomLeft = (cx - bottomReach) - (left + r);
+        final float bottomRight = (right - r) - (cx + bottomReach);
+        final float topRight = (right - r) - (cx + topReach);
+        final float capLen = (float) Math.PI * r;
+        final float total = topLeft + capLen + bottomLeft + bottomRight + capLen + topRight;
+        if (total <= 0f) {
+            return;
+        }
+        float left0 = total * fraction;
+        left0 = run(c, left0, bottomLeft, cx - bottomReach, bottom, left + r, bottom);
+        left0 = cap(c, left0, capLen, left + r, cy, r, 90f, 180f);
+        left0 = run(c, left0, topLeft, left + r, top, cx - topReach, top);
+        left0 = run(c, left0, topRight, cx + topReach, top, right - r, top);
+        left0 = cap(c, left0, capLen, right - r, cy, r, 270f, 180f);
+        run(c, left0, bottomRight, right - r, bottom, cx + bottomReach, bottom);
+    }
+
+    /** 尽量画一段直走线，返回剩余预算。 */
+    private static float run(Canvas c, float remaining, float length,
+                             float x1, float y1, float x2, float y2) {
+        if (remaining <= 0f || length <= 0f) {
+            return remaining;
+        }
+        if (remaining >= length) {
+            c.drawLine(x1, y1, x2, y2, STROKE);
+            return remaining - length;
+        }
+        final float t = remaining / length;
+        c.drawLine(x1, y1, x1 + (x2 - x1) * t, y1 + (y2 - y1) * t, STROKE);
+        return 0f;
+    }
+
+    /** 尽量画一个半圆帽，sweepDeg 有符号，从到达端开始长。 */
+    private static float cap(Canvas c, float remaining, float length,
+                             float cx, float cy, float r, float startDeg, float sweepDeg) {
+        if (remaining <= 0f || length <= 0f) {
+            return remaining;
+        }
+        ARC.set(cx - r, cy - r, cx + r, cy + r);
+        if (remaining >= length) {
+            c.drawArc(ARC, startDeg, sweepDeg, false, STROKE);
+            return remaining - length;
+        }
+        c.drawArc(ARC, startDeg, sweepDeg * (remaining / length), false, STROKE);
+        return 0f;
+    }
+
+    /** 顶/底两个点行，各按其车道是否载点行而画。 */
+    private static void drawCapsuleDots(Canvas c, int level, int[] slotLevels, boolean dual,
+                                        float stroke, int fg, TrioAppearance a,
+                                        TrioAppearance.Capsule cap) {
+        final boolean topRow = cap == null || cap.dotsIn(TrioAppearance.Zone.TOP);
+        final boolean bottomRow = cap == null || cap.dotsIn(TrioAppearance.Zone.BOTTOM);
+        final int top = (dual && slotLevels != null) ? slotLevels[0] : level;
+        final int bottom = (dual && slotLevels != null) ? slotLevels[1] : level;
+        final int inactive = withAlpha(fg, a.trackAlpha);
+        final int topActive = top < 0 ? 0 : Math.min(TrioGeometry.RECT_DOT_ROWS, top);
+        final int bottomActive = bottom < 0 ? 0 : Math.min(TrioGeometry.RECT_DOT_ROWS, bottom);
+        final float topY = TrioGeometry.capDotTopY();
+        final float bottomY = TrioGeometry.capDotBottomY();
+        final float first = TrioGeometry.CAP_DOT_CX - TrioGeometry.CAP_DOT_PITCH * 1.5f;
+        FILL.setStyle(Paint.Style.FILL);
+        for (int i = 0; i < TrioGeometry.RECT_DOT_ROWS; i++) {
+            final float x = first + i * TrioGeometry.CAP_DOT_PITCH;
+            if (topRow) {
+                FILL.setColor(i < topActive ? fg : inactive);
+                c.drawCircle(x, topY, TrioGeometry.CAP_DOT_R, FILL);
+            }
+            if (bottomRow) {
+                FILL.setColor(i < bottomActive ? fg : inactive);
+                c.drawCircle(x, bottomY, TrioGeometry.CAP_DOT_R, FILL);
+            }
+        }
+    }
+
+    /** 时钟，固定在左列，中心 {@code (cx, cy)}。 */
+    private static void drawCapsuleTime(Canvas c, float stroke, int fg, TrioAppearance a,
+                                        float cx, float cy, float heightHint) {
+        final String text = clockText();
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        applyWeight(a.valueWeight);
+        final float size = capsuleTextSize(text, a.valueSize, stroke,
+                capsuleSlotWidth(TrioAppearance.Zone.CENTRE, heightHint, stroke, true), 100,
+                effectiveHeightLimit(heightHint, stroke));
+        TEXT.setTextSize(size);
+        TEXT.setColor(fg);
+        TEXT.setTextAlign(Paint.Align.CENTER);
+        c.drawText(text, cx, cy + (size * TrioGeometry.CAP_HEIGHT_RATIO) * 0.5f, TEXT);
+    }
+
+    /** 电量数字，落在某车道中心。 */
+    private static void drawCapsuleValue(Canvas c, float stroke, int level, int fg,
+                                         TrioAppearance a, float cx, float cy,
+                                         float heightHint) {
+        final String text = String.valueOf(level);
+        applyWeight(a.valueWeight);
+        final float size = capsuleTextSize(text, a.valueSize, stroke,
+                capsuleSlotWidth(TrioAppearance.Zone.CENTRE, heightHint, stroke, false), 100,
+                effectiveHeightLimit(heightHint, stroke));
+        TEXT.setTextSize(size);
+        TEXT.setColor(fg);
+        TEXT.setTextAlign(Paint.Align.CENTER);
+        c.drawText(text, cx, cy + (size * TrioGeometry.CAP_HEIGHT_RATIO) * 0.5f, TEXT);
+    }
+
+    /** 网络类型，落在某车道中心。宽度按开口整行（上游同款），高度受 heightHint 约束。 */
+    private static void drawCapsuleType(Canvas c, float stroke, String type, int fg,
+                                        TrioAppearance a, float cx, float cy,
+                                        float heightHint) {
+        if (type == null || type.isEmpty()) {
+            return;
+        }
+        applyWeight(a.typeWeight);
+        // ★ 圈内 时间/电量/网络类型 同字号（用户规则）：类型基准字与电量一致，
+        //   仅 5GA 的 "A" 后缀按 typeSuffixScale 单独缩放。
+        final float size = capsuleTextSize(type, a.valueSize, stroke,
+                TrioGeometry.capOpeningWidth(), a.typeSuffixScale,
+                effectiveHeightLimit(heightHint, stroke));
+        drawType(c, type, cx, cy + (size * TrioGeometry.CAP_HEIGHT_RATIO) * 0.5f,
+                size, fg, a, a.typeSuffixScale);
+    }
+
+    /** 读数字号：用户设定、高度上限、槽宽三者里取最紧。 */
+    private static float capsuleTextSize(String text, int setting, float stroke,
+                                         float slotWidth, int suffixPercent) {
+        return capsuleTextSize(text, setting, stroke, slotWidth, suffixPercent,
+                TrioGeometry.capTextMaxSize(stroke));
+    }
+
+    private static float capsuleTextSize(String text, int setting, float stroke,
+                                         float slotWidth, int suffixPercent,
+                                         float heightLimit) {
+        final float requested = Math.min(setting * TrioGeometry.CAP_TEXT_SCALE, heightLimit);
+        return fitSize(text, requested, slotWidth, suffixPercent);
+    }
+
+    /**
+     * Wi-Fi 弧线，中心 {@code (cx, cy)}，capH 高。
+     * ★ v106：照圆环 pair 的 wifi 分支重写 —— 整组（两段弧 + 端点圆点 + 半线宽）
+     *   按 {@code capH / wifiInkH(arcStroke)} 整体缩放，缩放后用**未缩放的
+     *   arcStroke** 画，视觉线宽随整体等比缩小。
+     *   旧代码 scale=capH/W_INK_H 却把 strokeWidth 设成 arcStroke/scale（死守
+     *   视觉线宽），在开口带那种 15 单位的高度里线宽占掉一半，两段弧 + 圆点
+     *   糊成一坨（用户实测「WiFi 图标是一坨」）。
+     *   与圆环一致：level 决定画几段弧（3=两段、2=内段、1=只画点）。
+     */
+    private static void drawCapsuleWifi(Canvas c, float cx, float cy, float capH, int fg,
+                                        TrioAppearance a, int level) {
+        final float inkH = TrioGeometry.wifiInkH(a.arcStroke);
+        if (inkH <= 0f) {
+            return;
+        }
+        final float scale = capH / inkH;
+        // 墨盒（含上线宽）中心对齐 (cx, cy)：[W_TOP - arcStroke/2, WIFI_INK_BOTTOM]
+        final float inkCy = (TrioGeometry.W_TOP - a.arcStroke * 0.5f
+                + TrioGeometry.WIFI_INK_BOTTOM) * 0.5f;
+        final int save = c.save();
+        c.translate(cx - TrioGeometry.W_CX * scale, cy - inkCy * scale);
+        c.scale(scale, scale);
+        drawWifiArcs(c, level, fg, a);
+        c.restoreToCount(save);
+    }
+
+    /** 闪电，中心 {@code (cx, cy)}，capH 高。 */
+    private static void drawCapsuleBolt(Canvas c, float cx, float cy, float capH, int color) {
+        final float scale = capH / TrioGeometry.BOLT_INK_H;
+        final int save = c.save();
+        c.translate(cx - TrioGeometry.BOLT_CX_REF * scale,
+                cy - TrioGeometry.BOLT_INK_CY * scale);
+        c.scale(scale, scale);
+        FILL.setStyle(Paint.Style.FILL);
+        FILL.setColor(color);
+        c.drawPath(BOLT, FILL);
+        c.restoreToCount(save);
+    }
+
+    /** 「闪电 + 同伴」组合图标，中心 {@code (cx, cy)}。 */
+    private static void drawCapsulePair(Canvas c, int mate, float cx, float cy, float size,
+                                        int level, String mobileType, int wifiLevel,
+                                        float stroke, int boltColor, int fg,
+                                        TrioAppearance a) {
+        final float capH = size * TrioGeometry.CAP_HEIGHT_RATIO;
+        final float boltW = TrioGeometry.BOLT_INK_W * (capH / TrioGeometry.BOLT_INK_H);
+        final float mateW = capsuleReadingWidth(mate, level, mobileType, size, a);
+        final float left = cx - (boltW + TrioGeometry.CAP_PAIR_GAP + mateW) * 0.5f;
+        drawCapsuleBolt(c, left + boltW * 0.5f, cy, capH, boltColor);
+        drawCapsuleMate(c, mate, left + boltW + TrioGeometry.CAP_PAIR_GAP + mateW * 0.5f, cy,
+                capH, level, mobileType, wifiLevel, stroke, fg, a);
+    }
+
+    /** 组合里那件同伴（wifi/type/value）。 */
+    private static void drawCapsuleMate(Canvas c, int mate, float cx, float cy, float capH,
+                                        int level, String mobileType, int wifiLevel, float stroke,
+                                        int fg, TrioAppearance a) {
+        if (mate == Prefs.PART_WIFI) {
+            drawCapsuleWifi(c, cx, cy, capH, fg, a, wifiLevel);
+            return;
+        }
+        if (mate == Prefs.PART_TYPE) {
+            final String type = (mobileType == null) ? "" : mobileType;
+            drawType(c, type, cx, cy + capH * 0.5f, capH / TrioGeometry.CAP_HEIGHT_RATIO,
+                    fg, a, a.typeSuffixScale);
+            return;
+        }
+        applyWeight(a.valueWeight);
+        TEXT.setTextAlign(Paint.Align.CENTER);
+        TEXT.setTextSize(capH / TrioGeometry.CAP_HEIGHT_RATIO);
+        TEXT.setColor(fg);
+        c.drawText(String.valueOf(level), cx, cy + capH * 0.5f, TEXT);
+    }
+
+    /** 同伴的基准字号。 */
+    private static float capsulePairBaseSize(int mate, float stroke, int level,
+                                            String mobileType, TrioAppearance a) {
+        if (mate == Prefs.PART_WIFI) {
+            return Math.min(TrioGeometry.CAP_ICON_H, TrioGeometry.capInteriorHeight(stroke))
+                    / TrioGeometry.CAP_HEIGHT_RATIO;
+        }
+        // ★ 与圆环一致：闪电+电量用电量档、闪电+信号用信号档（尺寸页两个滑块
+        //   分别生效；胶囊下这两个键走 cap_ 命名空间，与圆环互不干扰）。
+        //   单件右列（非 pair）仍走 valueSize —— 用户要求时间/电量/5G 一样大。
+        final int base = (mate == Prefs.PART_VALUE) ? a.chargeValueSize : a.chargeSignalSize;
+        return capsuleTextSize(capsuleReadingText(mate, level, mobileType),
+                base, stroke,
+                TrioGeometry.capValueSlotWidth(stroke), capsuleSuffixPercent(mate, a));
+    }
+
+    private static String capsuleReadingText(int mate, int level, String mobileType) {
+        if (mate == Prefs.PART_TYPE) {
+            return (mobileType == null) ? "" : mobileType;
+        }
+        if (mate == Prefs.PART_VALUE) {
+            return String.valueOf(level);
+        }
+        return "";
+    }
+
+    private static int capsuleSuffixPercent(int mate, TrioAppearance a) {
+        return (mate == Prefs.PART_TYPE) ? a.typeSuffixScale : 100;
+    }
+
+    /** 某字号下同伴的墨宽。 */
+    private static float capsuleReadingWidth(int mate, int level, String mobileType, float size,
+                                             TrioAppearance a) {
+        if (mate == Prefs.PART_WIFI) {
+            // ★ 与 drawCapsuleWifi 同基准：整组含半线宽（圆环 wifiInkW 同款），
+            //   否则 pair 排位时算的宽度与画出来的不一致，间距又会错。
+            final float scale = size * TrioGeometry.CAP_HEIGHT_RATIO
+                    / TrioGeometry.wifiInkH(a.arcStroke);
+            return TrioGeometry.wifiInkW(a.arcStroke) * scale;
+        }
+        applyWeight(mate == Prefs.PART_TYPE ? a.typeWeight : a.valueWeight);
+        TEXT.setTextSize(size);
+        if (mate == Prefs.PART_TYPE) {
+            // ★ 与圆环 measureType / drawType 完全同款：base 和 A 分别测量再相加。
+            //   旧算法 base+(full-base)*scale/100 靠"5GA"整体测量反推 A 宽，
+            //   与 drawType 里 baseWidth+suffixWidth 的算法存在字距差，
+            //   pair 排布时闪电与 5GA 块之间就会差出这一点（用户实测 A 甩飞）。
+            final String type = (mobileType == null) ? "" : mobileType;
+            if (!TrioGeometry.hasShrunkSuffix(type, a.typeSuffixScale)) {
+                return TEXT.measureText(type);
+            }
+            final float base = TEXT.measureText(TrioGeometry.typeBase(type));
+            TEXT.setTextSize(size * a.typeSuffixScale / 100f);
+            final float suffix = TEXT.measureText(String.valueOf(TrioGeometry.TYPE_SUFFIX));
+            TEXT.setTextSize(size);
+            return base + suffix;
+        }
+        return TEXT.measureText(String.valueOf(level));
+    }
+
+    /** 把「闪电 + 同伴」压到能放进该列的宽度。 */
+    private static float fitPairSize(int mate, float size, float avail, int level,
+                                     String mobileType, TrioAppearance a) {
+        final float capH = size * TrioGeometry.CAP_HEIGHT_RATIO;
+        final float boltW = TrioGeometry.BOLT_INK_W * (capH / TrioGeometry.BOLT_INK_H);
+        final float mateW = capsuleReadingWidth(mate, level, mobileType, size, a);
+        final float total = boltW + TrioGeometry.CAP_PAIR_GAP + mateW;
+        if (total <= avail || total <= 0f) {
+            return size;
+        }
+        return size * (avail / total);
+    }
+
+    /** The clock, in the user's 12/24-hour setting. */
+    private static String clockText() {
+        final Calendar cal = Calendar.getInstance();
+        final int hour = cal.get(Calendar.HOUR_OF_DAY);
+        final int minute = cal.get(Calendar.MINUTE);
+        if (sIs24Hour == null || sIs24Hour.booleanValue()) {
+            return String.format(Locale.US, "%02d:%02d", Integer.valueOf(hour),
+                    Integer.valueOf(minute));
+        }
+        final int h12 = hour % 12;
+        return String.format(Locale.US, "%02d:%02d", Integer.valueOf(h12 == 0 ? 12 : h12),
+                Integer.valueOf(minute));
+    }
+
 }

@@ -38,6 +38,18 @@ class SettingsRepository(context: Context) {
     private val density: Float
         get() = appContext.resources.displayMetrics.density
 
+    /** True when the user is currently on the capsule style. */
+    private val capsuleNow: Boolean
+        get() = preferences().getInt(Prefs.KEY_TRIO_STYLE, Prefs.DEF_TRIO_STYLE) == Prefs.STYLE_CAPSULE
+
+    /**
+     * Returns the storage key for [base], namespaced to the capsule when the
+     * capsule style is active. Geometry/position/charge fields live under a
+     * separate {@code "cap_"} prefix so the capsule keeps its own independent
+     * values instead of being polluted by the ring/rect settings.
+     */
+    private fun key(base: String): String = Prefs.capKeyAware(base, capsuleNow)
+
     private fun preferences() =
         appContext.getSharedPreferences(Prefs.NAME, Context.MODE_PRIVATE)
 
@@ -52,13 +64,22 @@ class SettingsRepository(context: Context) {
     fun setShowValue(value: Boolean) = writeBoolean(Prefs.KEY_SHOW_VALUE, value)
     fun setShowBolt(value: Boolean) = writeBoolean(Prefs.KEY_SHOW_BOLT, value)
     fun setDualSim(value: Boolean) = writeBoolean(Prefs.KEY_DUAL_SIM, value)
-    fun setValueCentred(value: Boolean) = writeBoolean(Prefs.KEY_VALUE_CENTRED, value)
+    fun setValueCentred(value: Boolean) = writeBoolean(key(Prefs.KEY_VALUE_CENTRED), value)
     /** 0 = hidden, 1 = inside the ring, 2 = outside it. */
-    fun setMobileTypeMode(value: Int) = writeInt(Prefs.KEY_MOBILE_TYPE_MODE, value)
+    fun setMobileTypeMode(value: Int) = writeInt(key(Prefs.KEY_MOBILE_TYPE_MODE), value)
     /** 0 = the ring arrangement, 1 = the rectangular one. */
     fun setTrioStyle(value: Int) = writeInt(Prefs.KEY_TRIO_STYLE, value)
+    /**
+     * ★ 胶囊三按钮（2026-10-21 用户拍板）。仅胶囊有意义，键不带 cap_ 前缀
+     * （只此一样式使用，不需要样式隔离），圆环/矩形读不到。
+     * 按钮1 右列（恒显）：电量 / 信号；按钮2 缺口：隐藏 / 闪电 / 电量 / 信号；
+     * 按钮3 充电闪电：隐藏 / 缺口独立 / 缺口+同伴 / 右侧+同伴。
+     */
+    fun setCapsuleRight(value: Int) = writeInt(Prefs.KEY_CAPSULE_RIGHT, value)
+    fun setCapsuleGap(value: Int) = writeInt(Prefs.KEY_CAPSULE_GAP, value)
+    fun setCapsuleBoltPos(value: Int) = writeInt(Prefs.KEY_CAPSULE_BOLT_POS, value)
     /** 0 = the signal readings stay inside the ring, 1 = they move outside it. */
-    fun setSignalMode(value: Int) = writeInt(Prefs.KEY_SIGNAL_MODE, value)
+    fun setSignalMode(value: Int) = writeInt(key(Prefs.KEY_SIGNAL_MODE), value)
     fun setStackedSignal(value: Boolean) = writeBoolean(Prefs.KEY_STACKED_SIGNAL, value)
     fun setDataSimOnly(value: Boolean) = writeBoolean(Prefs.KEY_DATA_SIM_ONLY, value)
 
@@ -73,10 +94,10 @@ class SettingsRepository(context: Context) {
     fun setOverlay(value: Boolean) {
         writeBoolean(Prefs.KEY_OVERLAY, value)
         if (!value) {
-            val current = preferences().getInt(
-                Prefs.KEY_GLYPH_SCALE, Prefs.DEF_GLYPH_SCALE)
+            val scaleKey = key(Prefs.KEY_GLYPH_SCALE)
+            val current = preferences().getInt(scaleKey, Prefs.DEF_GLYPH_SCALE)
             if (current > Prefs.MAX_GLYPH_SCALE_TREE) {
-                writeInt(Prefs.KEY_GLYPH_SCALE, Prefs.MAX_GLYPH_SCALE_TREE)
+                writeInt(scaleKey, Prefs.MAX_GLYPH_SCALE_TREE)
             }
         }
     }
@@ -117,44 +138,44 @@ class SettingsRepository(context: Context) {
     fun setLowThreshold(value: Int) = writeInt(Prefs.KEY_LOW_THRESHOLD, value)
     fun setPowerSaveColor(value: Boolean) = writeBoolean(Prefs.KEY_POWER_SAVE_COLOR, value)
     /** ★ v104：充电同显三选项（0 隐藏 / 1 圈上 / 2 圈内），只管电量那一对。 */
-    fun setChargePairMode(value: Int) = writeInt(Prefs.KEY_CHARGE_PAIR_MODE, value)
+    fun setChargePairMode(value: Int) = writeInt(key(Prefs.KEY_CHARGE_PAIR_MODE), value)
     /** ★ v104：信号要不要也去缺口跟闪电并排（默认关）。 */
     fun setChargeSignalAlso(value: Boolean) =
-        writeBoolean(Prefs.KEY_CHARGE_SIGNAL_ALSO, value)
+        writeBoolean(key(Prefs.KEY_CHARGE_SIGNAL_ALSO), value)
     /** ★ v82：「闪电+电量」这一对的字号（30–35，空间不足时自动缩小）。 */
-    fun setChargeValueSize(value: Int) = writeInt(Prefs.KEY_CHARGE_VALUE_SIZE, value)
+    fun setChargeValueSize(value: Int) = writeInt(key(Prefs.KEY_CHARGE_VALUE_SIZE), value)
     /** ★ v104：「闪电+信号」这一对的信号大小（30–35，空间不足时自动缩小）。 */
-    fun setChargeSignalSize(value: Int) = writeInt(Prefs.KEY_CHARGE_SIGNAL_SIZE, value)
+    fun setChargeSignalSize(value: Int) = writeInt(key(Prefs.KEY_CHARGE_SIGNAL_SIZE), value)
     /** ★ v104：组合图标里 5GA 的 "A" 相对主字号的百分比（50–100）。 */
-    fun setChargeSuffixAScale(value: Int) = writeInt(Prefs.KEY_CHARGE_SUFFIX_A_SCALE, value)
-    fun setRingStroke(value: Int) = writeInt(Prefs.KEY_RING_STROKE, value)
-    fun setArcStroke(value: Int) = writeInt(Prefs.KEY_ARC_STROKE, value)
-    fun setValueSize(value: Int) = writeInt(Prefs.KEY_VALUE_SIZE, value)
-    fun setValueWeight(value: Int) = writeInt(Prefs.KEY_VALUE_WEIGHT, value)
-    fun setTypeSize(value: Int) = writeInt(Prefs.KEY_TYPE_SIZE, value)
-    fun setOutTypeSize(value: Int) = writeInt(Prefs.KEY_OUT_TYPE_SIZE_DP, value)
-    fun setOutSignalSize(value: Int) = writeInt(Prefs.KEY_OUT_SIGNAL_SIZE, value)
-    fun setOutTypeMarginLeft(value: Int) = writeInt(Prefs.KEY_OUT_TYPE_MARGIN_LEFT, value)
-    fun setOutTypeMarginRight(value: Int) = writeInt(Prefs.KEY_OUT_TYPE_MARGIN_RIGHT, value)
-    fun setOutSignalMargin(value: Int) = writeInt(Prefs.KEY_OUT_SIGNAL_MARGIN, value)
-    fun setGlyphLeftOffset(value: Int) = writeInt(Prefs.KEY_GLYPH_LEFT_OFFSET, value)
+    fun setChargeSuffixAScale(value: Int) = writeInt(key(Prefs.KEY_CHARGE_SUFFIX_A_SCALE), value)
+    fun setRingStroke(value: Int) = writeInt(key(Prefs.KEY_RING_STROKE), value)
+    fun setArcStroke(value: Int) = writeInt(key(Prefs.KEY_ARC_STROKE), value)
+    fun setValueSize(value: Int) = writeInt(key(Prefs.KEY_VALUE_SIZE), value)
+    fun setValueWeight(value: Int) = writeInt(key(Prefs.KEY_VALUE_WEIGHT), value)
+    fun setTypeSize(value: Int) = writeInt(key(Prefs.KEY_TYPE_SIZE), value)
+    fun setOutTypeSize(value: Int) = writeInt(key(Prefs.KEY_OUT_TYPE_SIZE_DP), value)
+    fun setOutSignalSize(value: Int) = writeInt(key(Prefs.KEY_OUT_SIGNAL_SIZE), value)
+    fun setOutTypeMarginLeft(value: Int) = writeInt(key(Prefs.KEY_OUT_TYPE_MARGIN_LEFT), value)
+    fun setOutTypeMarginRight(value: Int) = writeInt(key(Prefs.KEY_OUT_TYPE_MARGIN_RIGHT), value)
+    fun setOutSignalMargin(value: Int) = writeInt(key(Prefs.KEY_OUT_SIGNAL_MARGIN), value)
+    fun setGlyphLeftOffset(value: Int) = writeInt(key(Prefs.KEY_GLYPH_LEFT_OFFSET), value)
     /**
      * ★ v82：整组左右平移（dp）。0 = 现在的位置；负值往左、正值往右。
      * 走 margin（推/放原生图标）+ translationX（平移整组）两条路，同一个量。
      */
-    fun setGlyphShift(value: Int) = writeInt(Prefs.KEY_GLYPH_SHIFT, value)
-    fun setPerfTemp(value: Boolean) = writeBoolean(Prefs.KEY_PERF_TEMP, value)
-    fun setPerfOuterMargin(value: Int) = writeInt(Prefs.KEY_PERF_OUTER_MARGIN, value)
-    fun setPerfOuterMarginRight(value: Int) = writeInt(Prefs.KEY_PERF_OUTER_MARGIN_RIGHT, value)
-    fun setPerfScale(value: Int) = writeInt(Prefs.KEY_PERF_SCALE, value)
-    fun setPerfWeight(value: Int) = writeInt(Prefs.KEY_PERF_WEIGHT, value)
-    fun setGlyphScale(value: Int) = writeInt(Prefs.KEY_GLYPH_SCALE, value)
+    fun setGlyphShift(value: Int) = writeInt(key(Prefs.KEY_GLYPH_SHIFT), value)
+    fun setPerfTemp(value: Boolean) = writeBoolean(key(Prefs.KEY_PERF_TEMP), value)
+    fun setPerfOuterMargin(value: Int) = writeInt(key(Prefs.KEY_PERF_OUTER_MARGIN), value)
+    fun setPerfOuterMarginRight(value: Int) = writeInt(key(Prefs.KEY_PERF_OUTER_MARGIN_RIGHT), value)
+    fun setPerfScale(value: Int) = writeInt(key(Prefs.KEY_PERF_SCALE), value)
+    fun setPerfWeight(value: Int) = writeInt(key(Prefs.KEY_PERF_WEIGHT), value)
+    fun setGlyphScale(value: Int) = writeInt(key(Prefs.KEY_GLYPH_SCALE), value)
     fun setBurnInProtect(value: Boolean) = writeBoolean(Prefs.KEY_BURN_IN_PROTECT, value)
     fun setBurnInAmplitude(value: Int) = writeInt(Prefs.KEY_BURN_IN_AMPLITUDE, value)
     fun setBurnInPeriod(value: Int) = writeInt(Prefs.KEY_BURN_IN_PERIOD, value)
-    fun setTypeSuffixScale(value: Int) = writeInt(Prefs.KEY_TYPE_SUFFIX_SCALE, value)
-    fun setTypeWeight(value: Int) = writeInt(Prefs.KEY_TYPE_WEIGHT, value)
-    fun setTrackAlpha(value: Int) = writeInt(Prefs.KEY_TRACK_ALPHA, value)
+    fun setTypeSuffixScale(value: Int) = writeInt(key(Prefs.KEY_TYPE_SUFFIX_SCALE), value)
+    fun setTypeWeight(value: Int) = writeInt(key(Prefs.KEY_TYPE_WEIGHT), value)
+    fun setTrackAlpha(value: Int) = writeInt(key(Prefs.KEY_TRACK_ALPHA), value)
 
     // ---------------------------------------------------------------- advanced
 
@@ -170,54 +191,9 @@ class SettingsRepository(context: Context) {
      * would leave SystemUI running with stale values from a previous session.
      */
     fun syncAllToFramework() {
-        val current = preferences()
-        val snapshot = TrioSettings.from(current, density)
-        push { prefs ->
-            prefs.putBoolean(Prefs.KEY_ENABLED, snapshot.enabled)
-            prefs.putBoolean(Prefs.KEY_SHOW_WIFI, snapshot.showWifi)
-            prefs.putBoolean(Prefs.KEY_SHOW_MOBILE, snapshot.showMobile)
-            prefs.putBoolean(Prefs.KEY_SHOW_VALUE, snapshot.showValue)
-            prefs.putBoolean(Prefs.KEY_SHOW_BOLT, snapshot.showBolt)
-            prefs.putBoolean(Prefs.KEY_DUAL_SIM, snapshot.dualSim)
-            prefs.putInt(Prefs.KEY_MOBILE_TYPE_MODE, snapshot.mobileTypeMode)
-            prefs.putBoolean(Prefs.KEY_VALUE_CENTRED, snapshot.valueCentred)
-            prefs.putInt(Prefs.KEY_TRIO_STYLE, snapshot.trioStyle)
-            prefs.putInt(Prefs.KEY_SIGNAL_MODE, snapshot.signalMode)
-            prefs.putBoolean(Prefs.KEY_STACKED_SIGNAL, snapshot.stackedSignal)
-            prefs.putBoolean(Prefs.KEY_DATA_SIM_ONLY, snapshot.dataSimOnly)
-            prefs.putBoolean(Prefs.KEY_OVERLAY, snapshot.overlayGlyph)
-
-            prefs.putBoolean(Prefs.KEY_ROLE_COLORS, snapshot.roleColors)
-            prefs.putInt(Prefs.KEY_COLOR_CRITICAL_ON_DARK, snapshot.criticalOnDark)
-            prefs.putInt(Prefs.KEY_COLOR_CRITICAL_ON_LIGHT, snapshot.criticalOnLight)
-            prefs.putInt(Prefs.KEY_COLOR_CHARGING_ON_DARK, snapshot.chargingOnDark)
-            prefs.putInt(Prefs.KEY_COLOR_CHARGING_ON_LIGHT, snapshot.chargingOnLight)
-            prefs.putInt(Prefs.KEY_COLOR_LOW_ON_DARK, snapshot.lowOnDark)
-            prefs.putInt(Prefs.KEY_COLOR_LOW_ON_LIGHT, snapshot.lowOnLight)
-            prefs.putInt(Prefs.KEY_LOW_THRESHOLD, snapshot.lowThreshold)
-            prefs.putBoolean(Prefs.KEY_POWER_SAVE_COLOR, snapshot.powerSaveColor)
-            prefs.putInt(Prefs.KEY_CHARGE_PAIR_MODE, snapshot.chargePairMode)
-            prefs.putBoolean(Prefs.KEY_CHARGE_SIGNAL_ALSO, snapshot.chargeSignalAlso)
-            prefs.putInt(Prefs.KEY_CHARGE_VALUE_SIZE, snapshot.chargeValueSize)
-            prefs.putInt(Prefs.KEY_CHARGE_SIGNAL_SIZE, snapshot.chargeSignalSize)
-            prefs.putInt(Prefs.KEY_CHARGE_SUFFIX_A_SCALE, snapshot.chargeSuffixAScale)
-
-            prefs.putInt(Prefs.KEY_RING_STROKE, snapshot.ringStroke)
-            prefs.putInt(Prefs.KEY_ARC_STROKE, snapshot.arcStroke)
-            prefs.putInt(Prefs.KEY_VALUE_SIZE, snapshot.valueSize)
-            prefs.putInt(Prefs.KEY_VALUE_WEIGHT, snapshot.valueWeight)
-            prefs.putInt(Prefs.KEY_TYPE_SIZE, snapshot.typeSize)
-            prefs.putInt(Prefs.KEY_OUT_TYPE_SIZE_DP, snapshot.outTypeSize)
-            prefs.putInt(Prefs.KEY_OUT_SIGNAL_SIZE, snapshot.outSignalSize)
-            prefs.putInt(Prefs.KEY_OUT_TYPE_MARGIN_LEFT, snapshot.outTypeMarginLeft)
-            prefs.putInt(Prefs.KEY_OUT_TYPE_MARGIN_RIGHT, snapshot.outTypeMarginRight)
-            prefs.putInt(Prefs.KEY_OUT_SIGNAL_MARGIN, snapshot.outSignalMargin)
-            prefs.putInt(Prefs.KEY_TYPE_SUFFIX_SCALE, snapshot.typeSuffixScale)
-            prefs.putInt(Prefs.KEY_TYPE_WEIGHT, snapshot.typeWeight)
-            prefs.putInt(Prefs.KEY_TRACK_ALPHA, snapshot.trackAlpha)
-
-            prefs.putBoolean(Prefs.KEY_DEBUG_LOG, current.getBoolean(Prefs.KEY_DEBUG_LOG, Prefs.DEF_DEBUG_LOG))
-        }
+        val snapshot = TrioSettings.from(preferences(), density)
+        val bundle = snapshot.toBundle()
+        push { putBundle(it, bundle) }
         notifyModule()
     }
 
