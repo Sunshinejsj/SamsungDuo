@@ -1,11 +1,16 @@
 # Builds the module on GitHub's Linux runners.
 #
-# Two paths into a release, both producing the same APK:
-#   * push a `v*` tag          -> build, stamp the version from the tag, publish a
-#                                 full Release with the APK attached. This is the
-#                                 path the in-app updater reads
-#                                 (releases/latest), so the tag IS the version.
-#   * push to any branch       -> build only, as a check. Nothing is published.
+# This workflow builds only. It never publishes a Release:
+#   * push a `v*` tag   -> build the tagged version, upload the APK as a workflow
+#                          artifact (build verification)
+#   * push to any branch -> build only, as a check
+#
+# Releases are published by the repository's own pipeline (release.ps1), which runs
+# on the maintainer's machine with their own credentials. That is deliberate: a
+# Release created by GitHub Actions is attributed to "github-actions[bot]", and the
+# release page then shows the bot instead of the maintainer. Publishing locally
+# keeps the release attributed to the repository owner, and the tag IS the version
+# the in-app updater reads (releases/latest).
 #
 # The repository's own pipeline (release.ps1) is deliberately offline: it drives a
 # local JDK and Android SDK. A runner has neither, so this workflow uses the Gradle
@@ -22,7 +27,7 @@ on:
     tags: ['v*']
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   apk:
@@ -72,10 +77,11 @@ jobs:
         with:
           gradle-version: '9.8.0'
 
-      # The tag is the version: refs/tags/v9.4 -> versionName 9.4, versionCode 94
+      # The tag is the version: refs/tags/v10.3 -> versionName 10.3, versionCode 103
       # (major*10 + minor, the same rule app/build.gradle.kts uses for its
       # checked-in default). A branch push has no tag, so it keeps the checked-in
-      # default and is never published.
+      # default. The version is only stamped onto the artifact here; publishing is
+      # done by release.ps1 on the maintainer's machine.
       - name: Resolve version from the tag
         id: stamp
         run: |
@@ -83,11 +89,9 @@ jobs:
           if [[ "$ref" =~ ^v([0-9]+)\.([0-9]+)$ ]]; then
             name="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
             code=$(( ${BASH_REMATCH[1]} * 10 + ${BASH_REMATCH[2]} ))
-            echo "publish=true" >> "$GITHUB_OUTPUT"
           else
             name=""
             code=""
-            echo "publish=false" >> "$GITHUB_OUTPUT"
           fi
           echo "name=$name" >> "$GITHUB_OUTPUT"
           echo "code=$code" >> "$GITHUB_OUTPUT"
@@ -117,25 +121,7 @@ jobs:
           path: dist/*.apk
           if-no-files-found: error
 
-      # ★ v85：tag push 才发布，且必须是正式 Release —— app 里的 updater 读
-      #   releases/latest，那个接口不返回 draft 与 prerelease。
-      #   资源名必须是 .apk，parseRelease 取第一个 apk asset。
-      # ★ 发版正文用仓库内 RELEASE_NOTES.md（人工撰写的「更新内容」），不再用自动提交列表。
-      - name: Prepare release notes
-        if: steps.stamp.outputs.publish == 'true'
-        run: |
-          if [ ! -f RELEASE_NOTES.md ]; then
-            printf '# SamsungDuo %s\n\n1. 修复……\n' "${{ steps.stamp.outputs.name }}" > RELEASE_NOTES.md
-          fi
-          sed -i "s/{{VERSION}}/${{ steps.stamp.outputs.name }}/g" RELEASE_NOTES.md
-      - name: Publish a release for the APK
-        if: steps.stamp.outputs.publish == 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.stamp.outputs.tag }}
-          name: SamsungDuo ${{ steps.stamp.outputs.name }}
-          body_path: RELEASE_NOTES.md
-          files: dist/*.apk
-          draft: false
-          prerelease: false
-          generate_release_notes: false
+      # ★ 发布不在本工作流里做（见文件头说明）：Actions 建的 Release 署名是
+      #   github-actions[bot]，而 release.ps1 用仓库主人的凭据发布，署名才是主人。
+      #   发版步骤：本地跑 release.ps1 -Version <版本> -NotesFile RELEASE_NOTES.md，
+      #   它会构建、打 tag、建正式 Release 并上传 APK。

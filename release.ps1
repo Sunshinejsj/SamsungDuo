@@ -17,6 +17,15 @@
 # 所以 Release 必须是**正式版**（不能是 draft / prerelease，那个接口不返回它们），
 # 且必须带上 .apk 资源。
 #
+# ★ 发布只走本脚本：GitHub Actions 建的 Release 署名是 github-actions[bot]，
+#   发布页显示的是机器人而不是仓库主人；本脚本用仓库主人自己的凭据发布，
+#   署名才是主人。.github/workflows/build.yml 因此只做构建校验、不再发布。
+#
+# 前置条件（踩过的坑）：
+#   * PowerShell 里要有 git：$env:PATH = "<PortableGit mingw64\bin>;$env:PATH"
+#     （脚本内部用裸 git 取凭据、打 tag、推 tag）
+#   * 走代理时同样要把 http_proxy / https_proxy 传进本会话
+#
 # 凭据：复用 git credential（首次 push / 发布会弹浏览器登录一次 GitHub）。
 # 前提：git remote origin 已指向 https://github.com/Sunshinejsj/SamsungDuo.git
 
