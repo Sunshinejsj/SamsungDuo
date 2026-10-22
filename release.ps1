@@ -105,7 +105,13 @@ $build.Output -split "`n" |
     ForEach-Object { Write-Host "    $_" }
 if ($build.ExitCode -ne 0) { throw "Gradle 构建失败（exit $($build.ExitCode)）" }
 
-$built = Join-Path $Root 'app\build\outputs\apk\release\app-release.apk'
+# 产物命名：build.gradle.kts 把 release APK 重命名为 SamsungDuo-{versionName}.apk
+# （见 app/build.gradle.kts 的 androidComponents 命名规则），旧名 app-release.apk
+# 只作兜底，否则会误判"没有找到构建产物"。
+$built = Join-Path $Root "app\build\outputs\apk\release\SamsungDuo-$Version.apk"
+if (-not (Test-Path $built)) {
+    $built = Join-Path $Root 'app\build\outputs\apk\release\app-release.apk'
+}
 if (-not (Test-Path $built)) { throw "没有找到构建产物：$built" }
 
 New-Item -ItemType Directory -Force -Path $Dist | Out-Null
