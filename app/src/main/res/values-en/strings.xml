@@ -108,7 +108,7 @@
     <string name="capsule_shape_normal">Regular</string>
     <string name="capsule_shape_samsung">Samsung style</string>
     <string name="capsule_length_title">Capsule length</string>
-    <string name="capsule_length_summary">Default 0, range -30 to 60. Lengthens the straight run between the end caps: the capsule grows wider while the caps and the height stay put.</string>
+    <string name="capsule_length_summary">Default 0, adjustable -30 to 60. Lengthens the straight segment; the rounded corners and the angle stay the same.</string>
     <string name="glyph_left_offset_title">Group left offset</string>
     <string name="glyph_left_offset_summary">Distance from the native status bar icons to the trio icon. Default 0, range -8.0 to +8.0dp.</string>
 

@@ -210,10 +210,13 @@ $body = @{
     draft      = $false
     prerelease = $false   # ★ 必须是 false：updater 读的 releases/latest 不返回 prerelease
 }
+# ★ 必须用 UTF-8 字节发送，否则 PowerShell 5.1 的 Invoke-RestMethod 会把中文正文编码成 ? 乱码
+$json = $body | ConvertTo-Json -Compress
+$bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
 if ($existing) {
-    $release = Invoke-RestMethod -Headers $headers -Uri $existing.url -Method Patch -Body ($body | ConvertTo-Json)
+    $release = Invoke-RestMethod -Headers $headers -Uri $existing.url -Method Patch -Body $bytes -ContentType 'application/json; charset=utf-8'
 } else {
-    $release = Invoke-RestMethod -Headers $headers -Uri $releaseUrl -Method Post -Body ($body | ConvertTo-Json)
+    $release = Invoke-RestMethod -Headers $headers -Uri $releaseUrl -Method Post -Body $bytes -ContentType 'application/json; charset=utf-8'
 }
 Write-Host "==> Release：$($release.html_url)" -ForegroundColor Green
 
