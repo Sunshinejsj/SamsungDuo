@@ -885,17 +885,6 @@ private fun LazyListScope.generalTab(
                         update { repo -> repo.setCapsuleShape(capsuleShapeModes[index].first) }
                     },
                 )
-                // ★ 按钮5 胶囊长度（2026-10-23，上游 v1.7.2 同款）：只加长两端圆角
-                //   之间的直线段，胶囊随之变宽，圆角与高度不变。负值缩短。
-                IntSlider(
-                    value = settings.capsuleLength,
-                    min = Prefs.MIN_CAPSULE_LENGTH,
-                    max = Prefs.MAX_CAPSULE_LENGTH,
-                    title = stringResource(R.string.capsule_length_title),
-                    summary = stringResource(R.string.capsule_length_summary),
-                    enabled = a.glyph,
-                    onValueChange = { v -> update { it.setCapsuleLength(v) } },
-                )
             }
             // ★ 胶囊专属：圆环的「闪电 + 同伴」搬进胶囊后的两个位置选择。
             //   右槽＝圆环环心，顶部开口＝圆环 12 点缺口；闪电只画一次，
@@ -1147,6 +1136,20 @@ private fun LazyListScope.geometryTab(
                 enabled = a.glyph,
                 onValueChange = { v -> update { it.setGlyphScale(v) } },
             )
+            // ★ v105（2026-10-23 用户要求）：胶囊长度从「常规」页移到「尺寸」页本卡，
+            //   与整体尺寸同组。胶囊专属（仅胶囊样式出现）：只加长两端圆角之间的
+            //   直线段，胶囊随之变宽，圆角与高度不变。负值缩短。
+            if (a.capsule) {
+                IntSlider(
+                    value = settings.capsuleLength,
+                    min = Prefs.MIN_CAPSULE_LENGTH,
+                    max = Prefs.MAX_CAPSULE_LENGTH,
+                    title = stringResource(R.string.capsule_length_title),
+                    summary = stringResource(R.string.capsule_length_summary),
+                    enabled = a.glyph,
+                    onValueChange = { v -> update { it.setCapsuleLength(v) } },
+                )
+            }
             // ★ v104：两条间距项并进「三合一图标尺寸」这一张卡（用户要求）——
             //   它们调的都是这一组在状态栏行里的横向位置，跟整体尺寸是同一个
             //   话题，分开成一组反而要在两张卡之间来回找。
