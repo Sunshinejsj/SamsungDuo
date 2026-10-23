@@ -206,7 +206,7 @@ if ($existing -and -not $Force) {
 $body = @{
     tag_name   = $tag
     name       = "SamsungDuo $Version"
-    body       = if ($NotesFile) { Get-Content $NotesFile -Raw } elseif ($Notes) { $Notes } else { "" }
+    body       = if ($NotesFile) { [System.IO.File]::ReadAllText($NotesFile, [System.Text.Encoding]::UTF8) } elseif ($Notes) { $Notes } else { "" }
     draft      = $false
     prerelease = $false   # ★ 必须是 false：updater 读的 releases/latest 不返回 prerelease
 }
