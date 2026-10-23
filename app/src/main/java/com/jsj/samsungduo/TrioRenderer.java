@@ -146,6 +146,10 @@ final class TrioRenderer {
         // switches themselves, which is what used to let the two arrangements
         // drift apart - and let the documentation drift from both.
         final TrioAppearance appearance = TrioAppearance.of(cfg);
+        // ★ 胶囊长度（上游 v1.7.2 同款）：一帧开头先定下本帧要画的额外直线段，
+        //   后面 inkScale / 平移 / 所有横向几何都从它派生。预览在 drawInto 之前
+        //   自己 set，两个进程不共享。
+        TrioGeometry.setCapsuleLength(cfg.capsuleLength);
         // The two arrangements have different ink extents, so each is fitted to
         // the host view with its own box.
         final boolean rect = appearance.rect;
@@ -187,7 +191,7 @@ final class TrioRenderer {
         final int save = canvas.save();
         if (capsule) {
             canvas.translate(
-                    (w - TrioGeometry.CAP_INK_W * scale) / 2f - TrioGeometry.CAP_INK_X * scale,
+                    (w - TrioGeometry.capInkW() * scale) / 2f - TrioGeometry.CAP_INK_X * scale,
                     (h - TrioGeometry.CAP_INK_H * scale) / 2f - TrioGeometry.CAP_INK_Y * scale);
         } else if (rect) {
             canvas.translate(
@@ -1445,7 +1449,7 @@ final class TrioRenderer {
      */
     static float inkScale(int w, int h, boolean capsule, boolean rect) {
         if (capsule) {
-            return inkScale(w, h, TrioGeometry.CAP_INK_W, TrioGeometry.CAP_INK_H);
+            return inkScale(w, h, TrioGeometry.capInkW(), TrioGeometry.CAP_INK_H);
         }
         return inkScale(w, h, rect);
     }
@@ -1576,15 +1580,24 @@ final class TrioRenderer {
     //  · 取色：全程走 fg / role（与圆环同一条 foreground() 链），无胶囊专属默认黑
     // =====================================================================
 
-    /** 胶囊宿主宽度：给定状态栏高度 edge，按墨迹盒宽高比换算。 */
+    /** 胶囊宿主宽度：给定状态栏高度 edge，按墨迹盒宽高比换算（含胶囊长度）。 */
     static int capsuleViewWidth(int edge) {
-        return Math.round(edge * TrioGeometry.CAP_INK_W / TrioGeometry.CAP_INK_H);
+        if (edge <= 0) {
+            return 0;
+        }
+        // 测量路径没有 cfg 可拿，从配置快照同步一次（绘制路径在 drawInto 里同步）。
+        TrioGeometry.setCapsuleLength(TrioConfig.get().capsuleLength);
+        return Math.round(edge * TrioGeometry.capInkW() / TrioGeometry.CAP_INK_H);
     }
 
     /** 胶囊宿主高度：在墨迹盒基础上含上下两条开口带（宽度不变 ⇒ 胶囊本体大小不变）。 */
     static int capsuleViewHeight(int width) {
+        if (width <= 0) {
+            return 0;
+        }
+        TrioGeometry.setCapsuleLength(TrioConfig.get().capsuleLength);
         return Math.round(width * (TrioGeometry.CAP_INK_BOTTOM - TrioGeometry.CAP_INK_TOP)
-                / TrioGeometry.CAP_INK_W);
+                / TrioGeometry.capInkW());
     }
 
     private static void drawCapsuleLayout(Canvas canvas, int level, boolean charging,
@@ -1646,7 +1659,7 @@ final class TrioRenderer {
             return;
         }
         final float cx = (band == TrioAppearance.Zone.TOP || band == TrioAppearance.Zone.BOTTOM)
-                ? (TrioGeometry.CAP_INK_X + TrioGeometry.CAP_INK_W * 0.5f)
+                ? (TrioGeometry.CAP_INK_X + TrioGeometry.capInkW() * 0.5f)
                 : TrioGeometry.capRightCx(stroke);
         final float cy;
         switch (band) {
@@ -1732,8 +1745,11 @@ final class TrioRenderer {
         if (cap == null) {
             return 0f;
         }
+        // ★ 负长度保护：退让不得超过平直段的一半，否则切口切进端帽，
+        //   填充走线的负长度段被跳过、下一端帽隐式连线横穿开口（L71 实测）。
+        final float maxReach = TrioGeometry.capOpeningMaxReach();
         if (cap.dotsIn(band)) {
-            return TrioGeometry.capDotReach(stroke);
+            return Math.min(TrioGeometry.capDotReach(stroke), maxReach);
         }
         final int part = cap.parts[band.ordinal()];
         if (part == Prefs.PART_NONE) {
@@ -1743,14 +1759,14 @@ final class TrioRenderer {
         // 画出开口压在实线上 —— 用户实测"缺口太小、重叠了"。
         if ((band == TrioAppearance.Zone.TOP && cap.pairTop)
                 || (band == TrioAppearance.Zone.CENTRE && cap.pairCentre)) {
-            return capPairHalf(cap.pairMate, stroke, level, type, a, band)
+            return Math.min(capPairHalf(cap.pairMate, stroke, level, type, a, band)
                     + TrioGeometry.capDotClearance() + stroke * 0.5f
-                    + TrioGeometry.CAP_OPENING_EXTRA;
+                    + TrioGeometry.CAP_OPENING_EXTRA, maxReach);
         }
-        return TrioGeometry.capPieceReach(part, level, type, stroke,
+        return Math.min(TrioGeometry.capPieceReach(part, level, type, stroke,
                 TrioGeometry.capOpeningTextRoomH(stroke))
                 + TrioGeometry.capDotClearance() + stroke * 0.5f
-                + TrioGeometry.CAP_OPENING_EXTRA;
+                + TrioGeometry.CAP_OPENING_EXTRA, maxReach);
     }
 
     /**
@@ -1764,9 +1780,11 @@ final class TrioRenderer {
     private static float capsulePairDrawSize(TrioAppearance.Zone band, int mate, float stroke,
                                              int level, String type, TrioAppearance a) {
         final float base = capsulePairBaseSize(mate, stroke, level, type, a);
+        // ★ 负长度保护：开口件按「退让上限 − 间隙 − 半描边 − 额外缝」的可用宽收缩，
+        //   而不是平直段全宽 —— 否则内容+间隙会顶到切口的圆头（L71）。
         final float avail = (band == TrioAppearance.Zone.CENTRE)
                 ? TrioGeometry.capValueSlotWidth(stroke)
-                : TrioGeometry.capOpeningWidth();
+                : TrioGeometry.capOpeningAvailWidth(stroke);
         final float size = fitPairSize(mate, base, avail, level, type, a);
         // ★ 缺口(pairTop)整组按开口带高度封顶：同伴信号/电量与「不充电单件」同字号
         //   （之前同伴走内部高度 ⇒ 充电比不充电大一圈，用户实测大小不一）。
@@ -1792,7 +1810,8 @@ final class TrioRenderer {
         final float mateW = capsuleReadingWidth(mate, level, type, size, a);
         final float halfBase = (boltW + TrioGeometry.CAP_PAIR_GAP + mateW) * 0.5f;
         final float avail = (band == TrioAppearance.Zone.CENTRE)
-                ? TrioGeometry.capValueSlotWidth(stroke) : TrioGeometry.capOpeningWidth();
+                ? TrioGeometry.capValueSlotWidth(stroke)
+                : TrioGeometry.capOpeningAvailWidth(stroke);
         return Math.min(halfBase, avail * 0.5f);
     }
 
@@ -1807,7 +1826,7 @@ final class TrioRenderer {
      */
     private static void buildCapsuleOutline(Path p, float topReach, float bottomReach, int shape) {
         final float left = TrioGeometry.CAP_LEFT;
-        final float right = TrioGeometry.CAP_RIGHT;
+        final float right = TrioGeometry.capRight();
         final float top = TrioGeometry.CAP_TOP;
         final float bottom = TrioGeometry.CAP_BOTTOM;
         final float r = TrioGeometry.CAP_RADIUS;
@@ -1882,7 +1901,7 @@ final class TrioRenderer {
     private static void drawCapsuleFill(Canvas c, float stroke, float fraction,
                                         float topReach, float bottomReach, int shape) {
         final float left = TrioGeometry.CAP_LEFT;
-        final float right = TrioGeometry.CAP_RIGHT;
+        final float right = TrioGeometry.capRight();
         final float top = TrioGeometry.CAP_TOP;
         final float bottom = TrioGeometry.CAP_BOTTOM;
         final float r = TrioGeometry.CAP_RADIUS;
@@ -1905,13 +1924,21 @@ final class TrioRenderer {
         }
         final Path p = new Path();
         float left0 = budget;
+        // ★ join 旗标：走线段被跳过（长度 ≤ 0）时当前点不在帽起点，端帽必须
+        //   强制另起子路径 —— 否则 arcTo / 超椭圆首采样会从当前点隐式连线到
+        //   帽起点，画出横穿开口的弦（L71：负长度下绿色填充越界的直接原因）。
+        boolean join;
+        float prev = left0;
         // 子路径 A：底左走线 → 左帽 → 顶左走线
         left0 = run(p, left0, bottomLeft, cx - bottomReach, bottom, left + r, bottom, true);
-        left0 = cap(p, left0, capLen, left + r, cy, r, 90f, 180f, shape);
+        join = bottomLeft > 0f && prev >= bottomLeft;
+        left0 = cap(p, left0, capLen, left + r, cy, r, 90f, 180f, shape, join);
         left0 = run(p, left0, topLeft, left + r, top, cx - topReach, top, false);
         // 子路径 B：顶右走线 → 右帽 → 底右走线（顶开口把两段断开）
+        prev = left0;
         left0 = run(p, left0, topRight, cx + topReach, top, right - r, top, true);
-        left0 = cap(p, left0, capLen, right - r, cy, r, 270f, 180f, shape);
+        join = topRight > 0f && prev >= topRight;
+        left0 = cap(p, left0, capLen, right - r, cy, r, 270f, 180f, shape, join);
         run(p, left0, bottomRight, right - r, bottom, cx + bottomReach, bottom, false);
         FILL_STROKE.setStrokeWidth(stroke);
         c.drawPath(p, FILL_STROKE);
@@ -1938,23 +1965,27 @@ final class TrioRenderer {
         return 0f;
     }
 
-    /** 尽量追加一个端帽，sweepDeg 有符号，从到达端开始长。SAMSUNG 形状走超椭圆采样折线。 */
+    /**
+     * 尽量追加一个端帽，sweepDeg 有符号，从到达端开始长。SAMSUNG 形状走超椭圆采样折线。
+     * {@code join}：前一段走线是否完整画到了帽起点 —— false 时强制另起子路径
+     * （{@code arcTo} 的 forceMoveTo / 超椭圆先 {@code moveTo}），绝不隐式连线。
+     */
     private static float cap(Path p, float remaining, float length,
                              float cx, float cy, float r, float startDeg, float sweepDeg,
-                             int shape) {
+                             int shape, boolean join) {
         if (remaining <= 0f || length <= 0f) {
             return remaining;
         }
         if (shape == Prefs.CAP_SHAPE_SAMSUNG) {
             return capSquircle(p, remaining, cx, cy, r,
-                    TrioGeometry.CAP_SHAPE_SAMSUNG_N, startDeg, sweepDeg);
+                    TrioGeometry.CAP_SHAPE_SAMSUNG_N, startDeg, sweepDeg, join);
         }
         ARC.set(cx - r, cy - r, cx + r, cy + r);
         if (remaining >= length) {
-            p.arcTo(ARC, startDeg, sweepDeg);
+            p.arcTo(ARC, startDeg, sweepDeg, !join);
             return remaining - length;
         }
-        p.arcTo(ARC, startDeg, sweepDeg * (remaining / length));
+        p.arcTo(ARC, startDeg, sweepDeg * (remaining / length), !join);
         return 0f;
     }
 
@@ -1968,7 +1999,7 @@ final class TrioRenderer {
      */
     private static float capSquircle(Path p, float remaining,
                                      float cx, float cy, float r, float n,
-                                     float startDeg, float sweepDeg) {
+                                     float startDeg, float sweepDeg, boolean join) {
         final int SEG = 48;
         final float a0 = (float) Math.toRadians(startDeg);
         final float a1 = (float) Math.toRadians(startDeg + sweepDeg);
@@ -1979,6 +2010,11 @@ final class TrioRenderer {
         final float s0 = (float) Math.sin(a0);
         float px = cx + r * (float) Math.pow(Math.abs(c0), 2f / n) * Math.signum(c0);
         float py = cy + r * (float) Math.pow(Math.abs(s0), 2f / n) * Math.signum(s0);
+        if (!join) {
+            // 前段走线被跳过：当前点在别处，必须另起子路径落到帽起点，
+            // 绝不允许隐式连线（横穿开口的弦，L71 实测）。
+            p.moveTo(px, py);
+        }
         float consumed = 0f;
         for (int i = 1; i <= SEG; i++) {
             final float a = a0 + (a1 - a0) * i / SEG;
@@ -2033,7 +2069,7 @@ final class TrioRenderer {
         final int bottomActive = bottom < 0 ? 0 : Math.min(TrioGeometry.RECT_DOT_ROWS, bottom);
         final float topY = TrioGeometry.capDotTopY();
         final float bottomY = TrioGeometry.capDotBottomY();
-        final float first = TrioGeometry.CAP_DOT_CX - TrioGeometry.CAP_DOT_PITCH * 1.5f;
+        final float first = TrioGeometry.capDotCx() - TrioGeometry.CAP_DOT_PITCH * 1.5f;
         FILL.setStyle(Paint.Style.FILL);
         for (int i = 0; i < TrioGeometry.RECT_DOT_ROWS; i++) {
             final float x = first + i * TrioGeometry.CAP_DOT_PITCH;

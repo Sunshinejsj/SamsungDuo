@@ -587,10 +587,47 @@ final class TrioGeometry {
 
     /** Outer bounds of the capsule outline, in design units. */
     static final float CAP_LEFT = 1.0f;
-    /** Right edge: the reference's own 2.34:1 aspect. The height never moves. */
+    /**
+     * Right edge of the outline at the reference's own 2.34:1 aspect.
+     *
+     * <p>这是<b>设计量宽</b>。实际画的右沿是 {@link #capRight()}（= 本值 + 用户的
+     * 「胶囊长度」），所以所有需要横向位置的量都应问那个函数而不是这个常量。
+     * 保留常量是因为参考图形是在这个数上量出来的，若干派生量以它为基准。
+     * 高度永远不动。
+     */
     static final float CAP_RIGHT = 139.0f;
     static final float CAP_TOP = 1.0f;
     static final float CAP_BOTTOM = 60.0f;
+
+    /**
+     * ★ 胶囊长度在 force 的那一帧的额外直线段长（设计单位），0 = 参考形状。
+     *
+     * <p>单个静态而非给六个函数穿参数：读它的有轮廓、填充走线、点行、内缘、
+     * 墨迹盒、宿主测量 —— 一帧之内它是常量，穿参数要摸遍所有胶囊调用点及其
+     * 调用者。渲染层在每次绘制开头 {@code set}，预览用自己的快照 {@code set}，
+     * 两个进程不共享（volatile 保可见性）。<b>不在这里读活动设置</b>：本类保持
+     * 纯几何，由调用方把设置值喂进来。
+     */
+    private static volatile int sCapLength = 0;
+
+    /** 设定本帧要画的额外直线段长（先夹到合法区间）。 */
+    static void setCapsuleLength(int extra) {
+        sCapLength = Prefs.clamp(extra, Prefs.MIN_CAPSULE_LENGTH, Prefs.MAX_CAPSULE_LENGTH);
+    }
+
+    /** 供无设置可拿的调用方镜像（宿主测量等）。 */
+    static int capsuleLength() {
+        return sCapLength;
+    }
+
+    /**
+     * 画的右沿：参考宽 + 用户加长。胶囊的<b>所有横向量</b>都从它派生 ——
+     * 端帽圆心、点行中心、内缘、墨迹盒。加长它 = 两条直线段各长这么多，
+     * 别的什么都不动：端帽半径不变、高度不变、按高度表述的比例不变。
+     */
+    static float capRight() {
+        return CAP_RIGHT + sCapLength;
+    }
 
     /** Corner radius: half the height, which makes the outline a stadium. */
     static final float CAP_RADIUS = (CAP_BOTTOM - CAP_TOP) * 0.5f;
@@ -615,8 +652,10 @@ final class TrioGeometry {
     static final float CAP_DOT_R = 3.7f;
     static final float CAP_DOT_PITCH = 10.9f;
 
-    /** Centre x of the four-dot row: the capsule's own centre. */
-    static final float CAP_DOT_CX = (CAP_LEFT + CAP_RIGHT) * 0.5f;
+    /** Centre x of the four-dot row: the capsule's own centre (follows capRight). */
+    static float capDotCx() {
+        return (CAP_LEFT + capRight()) * 0.5f;
+    }
 
     /**
      * The clear space the stroke leaves on each side of a dot row, as a
@@ -666,7 +705,7 @@ final class TrioGeometry {
     }
 
     static float capFlatRight() {
-        return CAP_RIGHT - CAP_RADIUS;
+        return capRight() - CAP_RADIUS;
     }
 
     static float capInteriorLeft(float stroke) {
@@ -674,7 +713,7 @@ final class TrioGeometry {
     }
 
     static float capInteriorRight(float stroke) {
-        return CAP_RIGHT - stroke * 0.5f;
+        return capRight() - stroke * 0.5f;
     }
 
     /**
@@ -921,6 +960,9 @@ final class TrioGeometry {
      * The capsule's ink box: the outline plus its stroke, sized against the
      * largest stroke the slider offers rather than the default, the way
      * {@link #RECT_INK_W} is.
+     *
+     * <p>★ 胶囊长度：横向要用 {@link #capInkW()}（随长度变），纵向仍用常量
+     * （高度不动）。比例尺由高度定，所以加长只改宿主宽度、不改绘制比例。
      */
     static final float CAP_INK_X = CAP_LEFT - Prefs.MAX_RING_STROKE * CAP_STROKE_RATIO * 0.5f;
     static final float CAP_INK_Y = CAP_TOP - Prefs.MAX_RING_STROKE * CAP_STROKE_RATIO * 0.5f;
@@ -928,6 +970,11 @@ final class TrioGeometry {
             (CAP_RIGHT + Prefs.MAX_RING_STROKE * CAP_STROKE_RATIO * 0.5f) - CAP_INK_X;
     static final float CAP_INK_H =
             (CAP_BOTTOM + Prefs.MAX_RING_STROKE * CAP_STROKE_RATIO * 0.5f) - CAP_INK_Y;
+
+    /** 实际画的墨迹盒宽：参考宽 + 胶囊长度（纵向 {@link #CAP_INK_H} 不变）。 */
+    static float capInkW() {
+        return CAP_INK_W + sCapLength;
+    }
 
     /**
      * 开口带高度（设计单位）。★ 上游 v1.7 同值 9：在墨迹盒上下各加一条带，
@@ -1036,12 +1083,32 @@ final class TrioGeometry {
     private static float capTextReach(String text, float stroke, float roomH) {
         final float em = Math.min(Prefs.DEF_VALUE_SIZE * CAP_TEXT_SCALE, roomH);
         final float half = Math.max(0, text.length()) * em * 0.31f;
-        return Math.min(half, capFlatRight() * 0.5f);
+        return Math.min(half, capOpeningAvailWidth(stroke) * 0.5f);
     }
 
     /** 开口整行可用宽度：平直线段范围（弧端之外会悬空在弧上）。 */
     static float capOpeningWidth() {
         return capFlatRight() - capFlatLeft();
+    }
+
+    /**
+     * 开口退让上限：平直段的一半。负长度把平直段缩短后，退让若仍按内容全宽走，
+     * 切口会切进端帽 —— 填充走线的负长度段被跳过，下一个端帽又从对面当前点
+     * 隐式连线到帽起点，画出横穿开口的弦（用户实测 −20 起绿色填充越界）。
+     * 所有开口退让不得超过此值。
+     */
+    static float capOpeningMaxReach() {
+        return (capRight() - CAP_LEFT) * 0.5f - CAP_RADIUS;
+    }
+
+    /**
+     * 开口里那件内容的可用整行宽：退让上限扣掉点间隙、半个描边与额外缝。
+     * 内容按它收缩后，「内容半宽 + 间隙 + 半描边 + 额外缝」才不会超过退让上限，
+     * 图标不会顶到切口的圆头。
+     */
+    static float capOpeningAvailWidth(float stroke) {
+        return 2f * Math.max(0f, capOpeningMaxReach()
+                - (capDotClearance() + stroke * 0.5f + CAP_OPENING_EXTRA));
     }
 
     /**
@@ -1054,7 +1121,7 @@ final class TrioGeometry {
         if (heightPx <= 0) {
             return 0;
         }
-        return Math.round(heightPx * (CAP_INK_W / CAP_INK_H));
+        return Math.round(heightPx * (capInkW() / CAP_INK_H));
     }
 
     // ------------------------------------------------------------------- frame

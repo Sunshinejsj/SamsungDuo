@@ -712,6 +712,21 @@ public final class Prefs {
     public static final int MIN_CAPSULE_SHAPE = CAP_SHAPE_NORMAL;
     public static final int MAX_CAPSULE_SHAPE = CAP_SHAPE_SAMSUNG;
 
+    /**
+     * ★ 胶囊长度（2026-10-23，移植上游 HyperDuo v1.7.2 的 {@code capsule_length}）：
+     * 只加长两端圆角之间的<b>直线段</b>，设计单位。
+     *
+     * <p>胶囊是体育场形：两个半圆端帽的半径由高度钉死（{@code CAP_RADIUS}），
+     * 直线段是唯一能变长而不改变形状的部分。加长它就是加宽胶囊：端帽保持圆、
+     * 描边保持粗细、所有按高度表述的比例（点距、字号、端帽半径）都不动。
+     * 0 = 参考宽度（与历史版本完全一致）；上限是再长就要读成"一根条"而不是胶囊。
+     * 下限 -30 时直线段仍剩 49 单位（参考 79），形状不塌。
+     */
+    public static final String KEY_CAPSULE_LENGTH = "capsule_length";
+    public static final int DEF_CAPSULE_LENGTH = 0;
+    public static final int MIN_CAPSULE_LENGTH = -30;
+    public static final int MAX_CAPSULE_LENGTH = 60;
+
     public static final int DEF_VALUE_SIZE = 36;
     /**
      * 700 is {@code Typeface.BOLD}, the weight the reference glyph uses. The

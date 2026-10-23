@@ -233,8 +233,10 @@ public final class TrioOverlay {
      * 曾试过的候选类型逐个试(2015/2012/2038)一并移除。
      */
     private static final int WINDOW_TYPE = 2012;
-    /** 重绘间隔（ms）：信号无广播，只能轮询。 */
-    private static final long REFRESH_MS = 1000L;
+    /** 重绘间隔（ms）：信号无广播，只能轮询。
+     *  ★ 省电：防烧屏位移是时间驱动的正弦（burnInOffset 用 elapsedRealtime），
+     *    每 5s 取一次当前时刻的位移即可保持轨迹平滑；1s 是 5 倍多余重绘。 */
+    private static final long REFRESH_MS = 5000L;
     /** 定位重试间隔（ms）。 */
     private static final long RETRY_MS = 600L;
     /** 重试上限，到顶归零继续重试（永不永久放弃）。 */
@@ -407,6 +409,11 @@ public final class TrioOverlay {
     private int retryCount;
     private int lastLoggedX = Integer.MIN_VALUE;
     private int lastLoggedY = Integer.MIN_VALUE;
+    /** ★ 省电：窗口模式只在尺寸/位置真的变了才 updateViewLayout，避免每秒白推布局。 */
+    private int lastWinX = Integer.MIN_VALUE;
+    private int lastWinY = Integer.MIN_VALUE;
+    private int lastWinW = Integer.MIN_VALUE;
+    private int lastWinH = Integer.MIN_VALUE;
 
     private TrioOverlay(View statusBarRoot, TrioState state) {
         this.statusBarRoot = statusBarRoot;
@@ -2538,7 +2545,15 @@ public final class TrioOverlay {
             params.y = capWin
                     ? barTop - Math.round((winH - edge) / 2f)
                     : barTop;
-            windowManager.updateViewLayout(glyph, params);
+            // ★ 省电：位置/尺寸都没变就不推布局（之前每秒无条件推，纯浪费唤醒）。
+            if (params.x != lastWinX || params.y != lastWinY
+                    || params.width != lastWinW || params.height != lastWinH) {
+                windowManager.updateViewLayout(glyph, params);
+                lastWinX = params.x;
+                lastWinY = params.y;
+                lastWinW = params.width;
+                lastWinH = params.height;
+            }
             // 只在位置变化时记一条日志，避免每秒刷屏
             if (params.x != lastLoggedX || params.y != lastLoggedY) {
                 lastLoggedX = params.x;
@@ -2860,12 +2875,24 @@ public final class TrioOverlay {
                 if (!mLooping) {
                     return;
                 }
-                // ★ v74 省电：防烧屏关掉后，TREE 模式（不靠 sync 重定位）下
-                //   这个循环已无事可做 —— applyBurnIn 归零位移就返回，但
-                //   invalidate 是无条件的，关掉防烧屏仍每秒重绘一遍纯属空转。
-                //   这里直接把循环停掉；恢复交给 onDraw 自愈（防烧屏开着时
-                //   系统一重绘本 View 就把 startLoop 重新拉起，见 onDraw）。
-                if (treeAttached && !burnInActive()) {
+                // ★ 省电：防烧屏关掉后，TREE 与 WINDOW 两种模式这个循环都已无事可做
+                //   —— applyBurnIn 归零位移就返回，但 invalidate 是无条件的，
+                //   关掉防烧屏仍每秒重绘一遍纯属空转。这里直接把循环停掉；
+                //   恢复交给 onDraw 自愈（防烧屏开着时系统一重绘本 View 就把
+                //   startLoop 重新拉起，见 onDraw）。
+                if (!burnInActive()) {
+                    // ★ 防烧屏关掉：先把 4 块平移一次性归位到基准（否则循环停了
+                    //   不再清位移，会残留最多 amplitude 的偏移），然后停循环。
+                    applyBurnIn(GlyphView.this, burnTmp, burnLast);
+                    if (sideSignal != null) {
+                        applyBurnIn(sideSignal, burnTmp, sideSignal.burnLast);
+                    }
+                    if (sideType != null) {
+                        applyBurnIn(sideType, burnTmp, sideType.burnLast);
+                    }
+                    if (sidePerf != null) {
+                        applyBurnIn(sidePerf, burnTmp, sidePerf.burnLast);
+                    }
                     mLooping = false;
                     return;
                 }
@@ -3071,6 +3098,14 @@ public final class TrioOverlay {
                             + " (win=" + visibility + ", "
                             + (r == null ? "?" : r.getClass().getSimpleName()) + ")");
                 }
+                // ★ 省电：视图真正隐藏（含彻底息屏，非 AOD——AOD 下视图仍 VISIBLE）
+                //   时停掉 1Hz 循环，不再无谓唤醒主线程；重新可见且防烧屏开着
+                //   （AOD 仍需缓慢漂移）时把循环拉回。stopLoop/startLoop 均幂等。
+                if (want == GONE) {
+                    stopLoop();
+                } else if (burnInActive()) {
+                    startLoop();
+                }
             } catch (Throwable ignored) {
                 // 绝不能因显隐处理抛异常
             }
@@ -3109,6 +3144,9 @@ public final class TrioOverlay {
         private int appliedScale = -1;
         /** ★ 已应用尺寸时的行高；行高一变就必须重算，否则会被更矮的行裁掉。 */
         private int appliedRowH = -1;
+        /** ★ 已应用尺寸时的【容器宽度】；换系统图标/主题只改图标尺寸不改行高时，
+         *   靠它触发重算 —— 否则旧的窄 lp 永久残留，图标变小，直到手动重拉尺寸才还原。 */
+        private int appliedRowW = -1;
 
         /**
          * ★ v108：配置变化（旋转 / 密度 / 折叠展开）由 ViewRootImpl 递归分发到每个
@@ -3153,8 +3191,14 @@ public final class TrioOverlay {
                 //   行高都会变，而方向与「整体尺寸」没动 —— 旧逻辑只看这两项，
                 //   于是尺寸停在上一行的取值上，被更矮的那一行裁掉（用户报的「偶尔图标裁剪缺失」）。
                 final int rowH = (statusBarRoot == null) ? 0 : statusBarRoot.getHeight();
-                if (land == appliedLandscape && scale == appliedScale && rowH == appliedRowH) {
-                    // 方向/尺寸/行高都没变：只在"刚改过、还没收敛"时继续复核。
+                // ★ 容器宽度：三合一的宽要受 containerW*SIZE_RATIO 钳制（见挂载段），
+                //   换系统图标/主题会改变图标尺寸、进而改变这一行的总宽；只跟踪高度
+                //   会漏掉这种"宽度变、高度不变"的情况，导致旧 lp 残留、图标变小。
+                final View par = (getParent() instanceof View) ? (View) getParent() : null;
+                final int rowW = (par == null) ? -1 : par.getWidth();
+                if (land == appliedLandscape && scale == appliedScale
+                        && rowH == appliedRowH && rowW == appliedRowW) {
+                    // 方向/尺寸/行高/行宽都没变：只在"刚改过、还没收敛"时继续复核。
                     if (settleFrames > 0) {
                         settleFrames--;
                         remountNow();
@@ -3164,6 +3208,7 @@ public final class TrioOverlay {
                 appliedLandscape = land;
                 appliedScale = scale;
                 appliedRowH = rowH;
+                appliedRowW = rowW;
                 TrioHooks.log(TrioHooks.LOG_INFO, "rot: size change land=" + land
                         + " scale=" + scale
                         + " effScale=" + effectiveGlyphScale()

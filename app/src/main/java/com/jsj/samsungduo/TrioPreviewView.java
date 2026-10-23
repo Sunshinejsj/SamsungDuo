@@ -194,9 +194,12 @@ public final class TrioPreviewView extends View {
             //   宽度只能用掉一半，图标缩成中间一条。改成给它一个同比例的宽扁
             //   子区域（宽度铺满、垂直居中），预览才和状态栏里看到的一样大。
             // ★ 高度含上下开口带（CAP_INK_TOP/BOTTOM），否则顶部/底部开口件被预览画布裁掉。
+            // ★ 胶囊长度：先同步本快照的长度再算宽扁比例（drawInto 里也会 set，
+            //   但这里的 drawH 在那之前就算）。
+            TrioGeometry.setCapsuleLength(settings.capsuleLength);
             final int drawH = Math.round(innerW
                     * ((TrioGeometry.CAP_INK_BOTTOM - TrioGeometry.CAP_INK_TOP)
-                            / TrioGeometry.CAP_INK_W));
+                            / TrioGeometry.capInkW()));
             final float top = (innerH - drawH) * 0.5f;
             if (drawH <= 0) {
                 canvas.restoreToCount(save);

@@ -885,6 +885,17 @@ private fun LazyListScope.generalTab(
                         update { repo -> repo.setCapsuleShape(capsuleShapeModes[index].first) }
                     },
                 )
+                // ★ 按钮5 胶囊长度（2026-10-23，上游 v1.7.2 同款）：只加长两端圆角
+                //   之间的直线段，胶囊随之变宽，圆角与高度不变。负值缩短。
+                IntSlider(
+                    value = settings.capsuleLength,
+                    min = Prefs.MIN_CAPSULE_LENGTH,
+                    max = Prefs.MAX_CAPSULE_LENGTH,
+                    title = stringResource(R.string.capsule_length_title),
+                    summary = stringResource(R.string.capsule_length_summary),
+                    enabled = a.glyph,
+                    onValueChange = { v -> update { it.setCapsuleLength(v) } },
+                )
             }
             // ★ 胶囊专属：圆环的「闪电 + 同伴」搬进胶囊后的两个位置选择。
             //   右槽＝圆环环心，顶部开口＝圆环 12 点缺口；闪电只画一次，
