@@ -89,8 +89,8 @@
     <!-- ★ 胶囊三按钮显式控制（2026-10-21 用户拍板）。仅胶囊样式显示。 -->
     <string name="group_capsule_buttons">胶囊内容控制</string>
     <!-- 文案精简（2026-10-22 用户定稿）：去掉「按钮N：」前缀，标题=短名，摘要=一句说明。 -->
-    <string name="capsule_right_title">右侧默认显示组件</string>
-    <string name="capsule_right_summary">电量 或 信号。</string>
+    <string name="capsule_right_title">同伴显示组件</string>
+    <string name="capsule_right_summary">这列显示电量或信号。</string>
     <string name="capsule_right_value">电量</string>
     <string name="capsule_right_signal">信号</string>
     <string name="capsule_gap_title">顶部缺口组件</string>
@@ -111,6 +111,10 @@
     <string name="capsule_shape_samsung">三星风格</string>
     <string name="capsule_length_title">胶囊长度</string>
     <string name="capsule_length_summary">默认0可调-30到60，加长直线段，圆角与角度不变。</string>
+    <string name="capsule_time_side_title">时间位置</string>
+    <string name="capsule_time_side_summary">时间列在左或在右。</string>
+    <string name="capsule_time_side_left">时间在左</string>
+    <string name="capsule_time_side_right">时间在右</string>
     <string name="glyph_left_offset_title">整组左侧间距</string>
     <string name="glyph_left_offset_summary">调整原生状态栏到三合一图标的距离。默认 0，可调范围 -8.0～+8.0dp。</string>
 

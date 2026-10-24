@@ -727,6 +727,14 @@ public final class Prefs {
     public static final int MIN_CAPSULE_LENGTH = -30;
     public static final int MAX_CAPSULE_LENGTH = 60;
 
+    /** 时间列位置：LEFT = 时间在左、同伴在右（默认，原行为）；RIGHT = 互换。 */
+    public static final String KEY_CAPSULE_TIME_SIDE = "capsule_time_side";
+    public static final int CAP_TIME_LEFT = 0;
+    public static final int CAP_TIME_RIGHT = 1;
+    public static final int DEF_CAPSULE_TIME_SIDE = CAP_TIME_LEFT;
+    public static final int MIN_CAPSULE_TIME_SIDE = CAP_TIME_LEFT;
+    public static final int MAX_CAPSULE_TIME_SIDE = CAP_TIME_RIGHT;
+
     public static final int DEF_VALUE_SIZE = 36;
     /**
      * 700 is {@code Typeface.BOLD}, the weight the reference glyph uses. The

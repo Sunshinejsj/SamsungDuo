@@ -82,6 +82,7 @@ class SettingsRepository(context: Context) {
     fun setCapsuleShape(value: Int) = writeInt(Prefs.KEY_CAPSULE_SHAPE, value)
     /** ★ 按钮5 胶囊长度：加长两端圆角之间的直线段（-30~60 设计单位，0 = 参考宽度）。 */
     fun setCapsuleLength(value: Int) = writeInt(Prefs.KEY_CAPSULE_LENGTH, value)
+    fun setCapsuleTimeSide(value: Int) = writeInt(Prefs.KEY_CAPSULE_TIME_SIDE, value)
     /** 0 = the signal readings stay inside the ring, 1 = they move outside it. */
     fun setSignalMode(value: Int) = writeInt(key(Prefs.KEY_SIGNAL_MODE), value)
     fun setStackedSignal(value: Boolean) = writeBoolean(Prefs.KEY_STACKED_SIGNAL, value)

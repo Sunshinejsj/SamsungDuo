@@ -885,6 +885,24 @@ private fun LazyListScope.generalTab(
                         update { repo -> repo.setCapsuleShape(capsuleShapeModes[index].first) }
                     },
                 )
+                // ★ 按钮6 时间位置（2026-10-24 用户要求）：时间列在左或在右，
+                //   同伴列自动换到另一侧；槽宽跟随内容，时间在哪侧哪侧为宽槽。
+                val capsuleTimeSides = listOf(
+                    Prefs.CAP_TIME_LEFT to R.string.capsule_time_side_left,
+                    Prefs.CAP_TIME_RIGHT to R.string.capsule_time_side_right,
+                )
+                OverlayDropdownPreference(
+                    items = capsuleTimeSides.map { stringResource(it.second) },
+                    selectedIndex = capsuleTimeSides
+                        .indexOfFirst { it.first == settings.capsuleTimeSide }.coerceAtLeast(0),
+                    title = stringResource(R.string.capsule_time_side_title),
+                    summary = stringResource(R.string.capsule_time_side_summary),
+                    insideMargin = SettingsItemMargin,
+                    enabled = a.glyph,
+                    onSelectedIndexChange = { index ->
+                        update { repo -> repo.setCapsuleTimeSide(capsuleTimeSides[index].first) }
+                    },
+                )
             }
             // ★ 胶囊专属：圆环的「闪电 + 同伴」搬进胶囊后的两个位置选择。
             //   右槽＝圆环环心，顶部开口＝圆环 12 点缺口；闪电只画一次，

@@ -197,6 +197,8 @@ public final class TrioPreviewView extends View {
             // ★ 胶囊长度：先同步本快照的长度再算宽扁比例（drawInto 里也会 set，
             //   但这里的 drawH 在那之前就算）。
             TrioGeometry.setCapsuleLength(settings.capsuleLength);
+            // ★ 时间位置（2026-10-24）：与长度同理，算宽扁比例前同步（drawInto 里也 set）。
+            TrioGeometry.setCapsuleTimeSide(settings.capsuleTimeSide);
             final int drawH = Math.round(innerW
                     * ((TrioGeometry.CAP_INK_BOTTOM - TrioGeometry.CAP_INK_TOP)
                             / TrioGeometry.capInkW()));

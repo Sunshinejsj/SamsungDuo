@@ -620,6 +620,18 @@ final class TrioGeometry {
         return sCapLength;
     }
 
+    // ★ 时间列位置（2026-10-24 用户要求）：CAP_TIME_LEFT = 时间在左、同伴在右（默认，
+    //   原行为）；CAP_TIME_RIGHT = 两者互换，槽宽跟随内容（时间在哪侧哪侧为宽槽）。
+    private static volatile int sTimeSide = Prefs.DEF_CAPSULE_TIME_SIDE;
+
+    static void setCapsuleTimeSide(int side) {
+        sTimeSide = Prefs.clamp(side, Prefs.MIN_CAPSULE_TIME_SIDE, Prefs.MAX_CAPSULE_TIME_SIDE);
+    }
+
+    static int capsuleTimeSide() {
+        return sTimeSide;
+    }
+
     /**
      * 画的右沿：参考宽 + 用户加长。胶囊的<b>所有横向量</b>都从它派生 ——
      * 端帽圆心、点行中心、内缘、墨迹盒。加长它 = 两条直线段各长这么多，
@@ -780,24 +792,34 @@ final class TrioGeometry {
         return capTextRight(stroke) - capTextLeft(stroke) - CAP_TEXT_GAP;
     }
 
-    /** Usable width of the left-hand slot, where the time is drawn. */
-    static float capTimeSlotWidth(float stroke) {
-        return capReadingsWidth(stroke) * CAP_TIME_WIDTH_SHARE;
+    /**
+     * ★ 时间列所在槽的可用宽（2026-10-24 用户要求的时间左右切换）：
+     * 槽宽跟随内容 —— 时间在哪一侧，哪一侧就是宽槽（{@link #CAP_TIME_WIDTH_SHARE}），
+     * 同伴列拿另一侧。文字自然宽度 2.52:1.68 的比，互换位置后这个比不变。
+     */
+    static float capTimeSlotWidth(float stroke, int side) {
+        return capReadingsWidth(stroke) * (side == Prefs.CAP_TIME_LEFT
+                ? CAP_TIME_WIDTH_SHARE : 1f - CAP_TIME_WIDTH_SHARE);
     }
 
-    /** Usable width of the right-hand slot: number, arcs, bolt or type. */
-    static float capValueSlotWidth(float stroke) {
-        return capReadingsWidth(stroke) * (1f - CAP_TIME_WIDTH_SHARE);
+    /** 同伴列所在槽的可用宽：电量数字、Wi-Fi 弧、闪电或类型。与时间槽互补。 */
+    static float capValueSlotWidth(float stroke, int side) {
+        return capReadingsWidth(stroke) * (side == Prefs.CAP_TIME_LEFT
+                ? 1f - CAP_TIME_WIDTH_SHARE : CAP_TIME_WIDTH_SHARE);
     }
 
-    /** Centre of the left-hand slot: the time's own place. */
-    static float capLeftCx(float stroke) {
-        return capTextLeft(stroke) + capTimeSlotWidth(stroke) * 0.5f;
+    /** 时间列中心：LEFT = 原左列（默认），RIGHT = 原右列。 */
+    static float capTimeCx(float stroke, int side) {
+        return side == Prefs.CAP_TIME_LEFT
+                ? capTextLeft(stroke) + capTimeSlotWidth(stroke, side) * 0.5f
+                : capTextRight(stroke) - capTimeSlotWidth(stroke, side) * 0.5f;
     }
 
-    /** Centre of the right-hand slot: the percentage, the arcs or the bolt. */
-    static float capRightCx(float stroke) {
-        return capTextRight(stroke) - capValueSlotWidth(stroke) * 0.5f;
+    /** 同伴列中心（电量/弧线/闪电/类型）：与时间列互补，永远在另一侧。 */
+    static float capValueCx(float stroke, int side) {
+        return side == Prefs.CAP_TIME_LEFT
+                ? capTextRight(stroke) - capValueSlotWidth(stroke, side) * 0.5f
+                : capTextLeft(stroke) + capValueSlotWidth(stroke, side) * 0.5f;
     }
 
     /**
@@ -935,7 +957,7 @@ final class TrioGeometry {
 
     /** Places the arcs' ink centre on the right-hand slot's own centre. */
     static float capWifiOffsetX(float stroke) {
-        return capRightCx(stroke) - W_CX * capWifiScale(stroke);
+        return capValueCx(stroke, capsuleTimeSide()) - W_CX * capWifiScale(stroke);
     }
 
     static float capWifiOffsetY(float stroke) {
@@ -949,7 +971,7 @@ final class TrioGeometry {
      * reusing them as path coordinates puts the bolt down and to the right.
      */
     static float capBoltOffsetX(float stroke) {
-        return capRightCx(stroke) - BOLT_CX_REF * capBoltScale(stroke);
+        return capValueCx(stroke, capsuleTimeSide()) - BOLT_CX_REF * capBoltScale(stroke);
     }
 
     static float capBoltOffsetY(float stroke) {

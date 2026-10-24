@@ -87,8 +87,8 @@
     <string name="charge_suffix_a_summary">Applies only when the pair shows 5GA: size of the trailing "A" as a percentage of the main size. Default 65%, range 50-100%.</string>
     <string name="group_charge_pair">Charging pair</string>
     <string name="group_capsule_buttons">Capsule content</string>
-    <string name="capsule_right_title">Right column</string>
-    <string name="capsule_right_summary">Battery value or signal.</string>
+    <string name="capsule_right_title">Companion column</string>
+    <string name="capsule_right_summary">Value or signal in this column.</string>
     <string name="capsule_right_value">Value</string>
     <string name="capsule_right_signal">Signal</string>
     <string name="capsule_gap_title">Top opening</string>
@@ -109,6 +109,10 @@
     <string name="capsule_shape_samsung">Samsung style</string>
     <string name="capsule_length_title">Capsule length</string>
     <string name="capsule_length_summary">Default 0, adjustable -30 to 60. Lengthens the straight segment; the rounded corners and the angle stay the same.</string>
+    <string name="capsule_time_side_title">Time side</string>
+    <string name="capsule_time_side_summary">Which side the time column sits on.</string>
+    <string name="capsule_time_side_left">Time on the left</string>
+    <string name="capsule_time_side_right">Time on the right</string>
     <string name="glyph_left_offset_title">Group left offset</string>
     <string name="glyph_left_offset_summary">Distance from the native status bar icons to the trio icon. Default 0, range -8.0 to +8.0dp.</string>
 

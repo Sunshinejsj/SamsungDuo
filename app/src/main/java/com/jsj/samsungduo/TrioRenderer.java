@@ -150,6 +150,9 @@ final class TrioRenderer {
         //   后面 inkScale / 平移 / 所有横向几何都从它派生。预览在 drawInto 之前
         //   自己 set，两个进程不共享。
         TrioGeometry.setCapsuleLength(cfg.capsuleLength);
+        // ★ 时间列位置（2026-10-24）：与 capsuleLength 同款，一帧开头定下本帧
+        //   时间/同伴两列的中心与槽宽（预览进程自己在 drawInto 之前 set）。
+        TrioGeometry.setCapsuleTimeSide(cfg.capsuleTimeSide);
         // The two arrangements have different ink extents, so each is fitted to
         // the host view with its own box.
         final boolean rect = appearance.rect;
@@ -1587,6 +1590,7 @@ final class TrioRenderer {
         }
         // 测量路径没有 cfg 可拿，从配置快照同步一次（绘制路径在 drawInto 里同步）。
         TrioGeometry.setCapsuleLength(TrioConfig.get().capsuleLength);
+        TrioGeometry.setCapsuleTimeSide(TrioConfig.get().capsuleTimeSide);
         return Math.round(edge * TrioGeometry.capInkW() / TrioGeometry.CAP_INK_H);
     }
 
@@ -1596,6 +1600,7 @@ final class TrioRenderer {
             return 0;
         }
         TrioGeometry.setCapsuleLength(TrioConfig.get().capsuleLength);
+        TrioGeometry.setCapsuleTimeSide(TrioConfig.get().capsuleTimeSide);
         return Math.round(width * (TrioGeometry.CAP_INK_BOTTOM - TrioGeometry.CAP_INK_TOP)
                 / TrioGeometry.capInkW());
     }
@@ -1630,9 +1635,11 @@ final class TrioRenderer {
             drawCapsuleDots(canvas, mobileLevel, slotLevels, cap.dual, stroke, fg, a, cap);
         }
 
-        // 时钟固定左列，独立于三车道（与上游一致）。
+        // 时钟列位置跟随「时间位置」设置（2026-10-24）：默认左列，可换到右列；
+        // 同伴列自动去另一侧，槽宽跟随内容互换。
         drawCapsuleTime(canvas, stroke, fg, a,
-                TrioGeometry.capLeftCx(stroke), TrioGeometry.capInteriorCy(stroke), -1f);
+                TrioGeometry.capTimeCx(stroke, TrioGeometry.capsuleTimeSide()),
+                TrioGeometry.capInteriorCy(stroke), -1f);
 
         drawCapsuleCell(canvas, stroke, TrioAppearance.Zone.TOP, cap, level, quickCharging,
                 wifiLevel, mobileType, fg, a);
@@ -1660,7 +1667,7 @@ final class TrioRenderer {
         }
         final float cx = (band == TrioAppearance.Zone.TOP || band == TrioAppearance.Zone.BOTTOM)
                 ? (TrioGeometry.CAP_INK_X + TrioGeometry.capInkW() * 0.5f)
-                : TrioGeometry.capRightCx(stroke);
+                : TrioGeometry.capValueCx(stroke, TrioGeometry.capsuleTimeSide());
         final float cy;
         switch (band) {
             case TOP:
@@ -1726,7 +1733,11 @@ final class TrioRenderer {
         if (heightHint >= 0f) {
             return TrioGeometry.capOpeningWidth();
         }
-        return clock ? TrioGeometry.capTimeSlotWidth(stroke) : TrioGeometry.capValueSlotWidth(stroke);
+        // ★ 时钟/同伴槽宽也按「时间位置」互换（2026-10-24）：clock=true 时取
+        //   时间实际所在槽的宽，否则取同伴槽的宽。
+        final int side = TrioGeometry.capsuleTimeSide();
+        return clock ? TrioGeometry.capTimeSlotWidth(stroke, side)
+                : TrioGeometry.capValueSlotWidth(stroke, side);
     }
 
     /** 该车道的文本垂直房间：CENTRE=-1（内部自带），开口=capOpeningTextEm。 */
@@ -1783,7 +1794,7 @@ final class TrioRenderer {
         // ★ 负长度保护：开口件按「退让上限 − 间隙 − 半描边 − 额外缝」的可用宽收缩，
         //   而不是平直段全宽 —— 否则内容+间隙会顶到切口的圆头（L71）。
         final float avail = (band == TrioAppearance.Zone.CENTRE)
-                ? TrioGeometry.capValueSlotWidth(stroke)
+                ? TrioGeometry.capValueSlotWidth(stroke, TrioGeometry.capsuleTimeSide())
                 : TrioGeometry.capOpeningAvailWidth(stroke);
         final float size = fitPairSize(mate, base, avail, level, type, a);
         // ★ 缺口(pairTop)整组按开口带高度封顶：同伴信号/电量与「不充电单件」同字号
@@ -1810,7 +1821,7 @@ final class TrioRenderer {
         final float mateW = capsuleReadingWidth(mate, level, type, size, a);
         final float halfBase = (boltW + TrioGeometry.CAP_PAIR_GAP + mateW) * 0.5f;
         final float avail = (band == TrioAppearance.Zone.CENTRE)
-                ? TrioGeometry.capValueSlotWidth(stroke)
+                ? TrioGeometry.capValueSlotWidth(stroke, TrioGeometry.capsuleTimeSide())
                 : TrioGeometry.capOpeningAvailWidth(stroke);
         return Math.min(halfBase, avail * 0.5f);
     }
@@ -2235,7 +2246,8 @@ final class TrioRenderer {
         final int base = (mate == Prefs.PART_VALUE) ? a.chargeValueSize : a.chargeSignalSize;
         return capsuleTextSize(capsuleReadingText(mate, level, mobileType),
                 base, stroke,
-                TrioGeometry.capValueSlotWidth(stroke), capsuleSuffixPercent(mate, a));
+                TrioGeometry.capValueSlotWidth(stroke, TrioGeometry.capsuleTimeSide()),
+                capsuleSuffixPercent(mate, a));
     }
 
     private static String capsuleReadingText(int mate, int level, String mobileType) {
