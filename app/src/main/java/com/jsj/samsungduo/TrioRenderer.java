@@ -1733,11 +1733,10 @@ final class TrioRenderer {
         if (heightHint >= 0f) {
             return TrioGeometry.capOpeningWidth();
         }
-        // ★ 时钟/同伴槽宽也按「时间位置」互换（2026-10-24）：clock=true 时取
-        //   时间实际所在槽的宽，否则取同伴槽的宽。
-        final int side = TrioGeometry.capsuleTimeSide();
-        return clock ? TrioGeometry.capTimeSlotWidth(stroke, side)
-                : TrioGeometry.capValueSlotWidth(stroke, side);
+        // ★ 槽宽按内容自然字宽比恒定（与 side 无关，L74 修）：clock=true 取
+        //   时间槽（60%），否则取同伴槽（40%）；换侧只换中心，不换字号。
+        return clock ? TrioGeometry.capTimeSlotWidth(stroke)
+                : TrioGeometry.capValueSlotWidth(stroke);
     }
 
     /** 该车道的文本垂直房间：CENTRE=-1（内部自带），开口=capOpeningTextEm。 */
@@ -1794,7 +1793,7 @@ final class TrioRenderer {
         // ★ 负长度保护：开口件按「退让上限 − 间隙 − 半描边 − 额外缝」的可用宽收缩，
         //   而不是平直段全宽 —— 否则内容+间隙会顶到切口的圆头（L71）。
         final float avail = (band == TrioAppearance.Zone.CENTRE)
-                ? TrioGeometry.capValueSlotWidth(stroke, TrioGeometry.capsuleTimeSide())
+                ? TrioGeometry.capValueSlotWidth(stroke)
                 : TrioGeometry.capOpeningAvailWidth(stroke);
         final float size = fitPairSize(mate, base, avail, level, type, a);
         // ★ 缺口(pairTop)整组按开口带高度封顶：同伴信号/电量与「不充电单件」同字号
@@ -1821,7 +1820,7 @@ final class TrioRenderer {
         final float mateW = capsuleReadingWidth(mate, level, type, size, a);
         final float halfBase = (boltW + TrioGeometry.CAP_PAIR_GAP + mateW) * 0.5f;
         final float avail = (band == TrioAppearance.Zone.CENTRE)
-                ? TrioGeometry.capValueSlotWidth(stroke, TrioGeometry.capsuleTimeSide())
+                ? TrioGeometry.capValueSlotWidth(stroke)
                 : TrioGeometry.capOpeningAvailWidth(stroke);
         return Math.min(halfBase, avail * 0.5f);
     }
@@ -2246,8 +2245,7 @@ final class TrioRenderer {
         final int base = (mate == Prefs.PART_VALUE) ? a.chargeValueSize : a.chargeSignalSize;
         return capsuleTextSize(capsuleReadingText(mate, level, mobileType),
                 base, stroke,
-                TrioGeometry.capValueSlotWidth(stroke, TrioGeometry.capsuleTimeSide()),
-                capsuleSuffixPercent(mate, a));
+                TrioGeometry.capValueSlotWidth(stroke), capsuleSuffixPercent(mate, a));
     }
 
     private static String capsuleReadingText(int mate, int level, String mobileType) {

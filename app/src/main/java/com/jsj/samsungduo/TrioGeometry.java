@@ -793,33 +793,35 @@ final class TrioGeometry {
     }
 
     /**
-     * ★ 时间列所在槽的可用宽（2026-10-24 用户要求的时间左右切换）：
-     * 槽宽跟随内容 —— 时间在哪一侧，哪一侧就是宽槽（{@link #CAP_TIME_WIDTH_SHARE}），
-     * 同伴列拿另一侧。文字自然宽度 2.52:1.68 的比，互换位置后这个比不变。
+     * 时间列所在槽的可用宽：按两者**自然字宽比**恒定划分（2.52:1.68），
+     * 与时间在哪一侧无关 —— side 只决定中心在哪侧（见 {@link #capTimeCx}）。
+     * ★ L74 修：此前写成「槽宽随 side 互换」，时间在右时同伴反而拿到宽槽字号
+     *   却画进窄槽，字大溢出（用户实机截图：76 巨大、08:23 过小）。
      */
-    static float capTimeSlotWidth(float stroke, int side) {
-        return capReadingsWidth(stroke) * (side == Prefs.CAP_TIME_LEFT
-                ? CAP_TIME_WIDTH_SHARE : 1f - CAP_TIME_WIDTH_SHARE);
+    static float capTimeSlotWidth(float stroke) {
+        return capReadingsWidth(stroke) * CAP_TIME_WIDTH_SHARE;
     }
 
-    /** 同伴列所在槽的可用宽：电量数字、Wi-Fi 弧、闪电或类型。与时间槽互补。 */
-    static float capValueSlotWidth(float stroke, int side) {
-        return capReadingsWidth(stroke) * (side == Prefs.CAP_TIME_LEFT
-                ? 1f - CAP_TIME_WIDTH_SHARE : CAP_TIME_WIDTH_SHARE);
+    /** 同伴列所在槽的可用宽：电量数字、Wi-Fi 弧、闪电或类型。恒定取 40%。 */
+    static float capValueSlotWidth(float stroke) {
+        return capReadingsWidth(stroke) * (1f - CAP_TIME_WIDTH_SHARE);
     }
 
-    /** 时间列中心：LEFT = 原左列（默认），RIGHT = 原右列。 */
+    /**
+     * 时间列中心：LEFT = 原左列（默认），RIGHT = 原右列。
+     * 槽宽不随 side 变（内容自然宽度比恒定），换侧后字号与「时间在左」时完全一致。
+     */
     static float capTimeCx(float stroke, int side) {
         return side == Prefs.CAP_TIME_LEFT
-                ? capTextLeft(stroke) + capTimeSlotWidth(stroke, side) * 0.5f
-                : capTextRight(stroke) - capTimeSlotWidth(stroke, side) * 0.5f;
+                ? capTextLeft(stroke) + capTimeSlotWidth(stroke) * 0.5f
+                : capTextRight(stroke) - capTimeSlotWidth(stroke) * 0.5f;
     }
 
     /** 同伴列中心（电量/弧线/闪电/类型）：与时间列互补，永远在另一侧。 */
     static float capValueCx(float stroke, int side) {
         return side == Prefs.CAP_TIME_LEFT
-                ? capTextRight(stroke) - capValueSlotWidth(stroke, side) * 0.5f
-                : capTextLeft(stroke) + capValueSlotWidth(stroke, side) * 0.5f;
+                ? capTextRight(stroke) - capValueSlotWidth(stroke) * 0.5f
+                : capTextLeft(stroke) + capValueSlotWidth(stroke) * 0.5f;
     }
 
     /**
