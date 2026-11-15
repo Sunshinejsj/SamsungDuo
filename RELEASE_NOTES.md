@@ -2,4 +2,4 @@
 
 ## 本次更新
 
-1. 新增：5G Advanced 网络下显示 5GA。
+1. 修复：5G Advanced 网络下未显示 5GA。
