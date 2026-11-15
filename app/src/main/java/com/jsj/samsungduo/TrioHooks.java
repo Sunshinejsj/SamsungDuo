@@ -121,6 +121,8 @@ public final class TrioHooks {
         // ★ v58：真正的取色路径（浅色背景下和别的图标一起变深）。
         final int darkHooks = hookDarkReceivers(module, cl);
         n += darkHooks;
+        // ★ 5GA 判据：hook TelephonyDisplayInfo.getOverrideNetworkType()（SystemUI 判图标的同一入口）。
+        n += hookDisplayInfo(module, cl);
         // ★ OneuiXP 专用补丁：**已停用**（用户 2026-10-22 弃用 OneuiXP）。
         //   这两组 hook 纯粹是"防御别的模块"的：别的模块（含 OneuiXP）会周期性把
         //   状态栏祖先的 clipChildren/clipToPadding 设回 true（OneuiXP 甚至反射
@@ -976,6 +978,44 @@ public final class TrioHooks {
             }
         }
         return 0;
+    }
+
+    /**
+     * ★ 5GA 判据来源：hook framework 的 {@code TelephonyDisplayInfo.getOverrideNetworkType()}。
+     * SystemUI 判图标时（MobileMappings.toDisplayIconKey）读的就是这个方法，
+     * 返回 5 = OVERRIDE_NETWORK_TYPE_NR_ADVANCED = 5GA。只读结果、不改返回值。
+     */
+    private static int hookDisplayInfo(XposedModule module, ClassLoader cl) {
+        Class<?> c = Refl.cls("android.telephony.TelephonyDisplayInfo", cl);
+        if (c == null) {
+            // framework 类经 SystemUI classloader 的父委派一般可取；兜底走系统 classloader。
+            try {
+                c = Class.forName("android.telephony.TelephonyDisplayInfo");
+            } catch (Throwable ignored) {
+            }
+        }
+        if (c == null) {
+            log(LOG_WARN, "TelephonyDisplayInfo missing");
+            return 0;
+        }
+        final Method m;
+        try {
+            m = c.getMethod("getOverrideNetworkType");
+        } catch (Throwable t) {
+            log(LOG_WARN, "getOverrideNetworkType missing: " + t);
+            return 0;
+        }
+        return hook(module, m, "displayinfo-override", chain -> {
+            final Object r = chain.proceed();
+            try {
+                if (r instanceof Integer && (Integer) r != TrioState.sOverrideNetType) {
+                    TrioState.sOverrideNetType = (Integer) r;
+                    log(LOG_INFO, "sigcfg displayinfo(hook): override=" + r);
+                }
+            } catch (Throwable ignored) {
+            }
+            return r;
+        });
     }
 
     // ------------------------------------------------------------------

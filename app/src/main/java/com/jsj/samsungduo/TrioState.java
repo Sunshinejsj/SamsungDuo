@@ -22,6 +22,7 @@ import android.telephony.CellSignalStrengthLte;
 import android.telephony.CellSignalStrengthNr;
 import android.telephony.CellSignalStrengthWcdma;
 import android.telephony.PhoneStateListener;
+import android.telephony.TelephonyDisplayInfo;
 import android.telephony.SignalStrength;
 import android.view.View;
 import android.telephony.SubscriptionInfo;
@@ -68,6 +69,9 @@ final class TrioState {
     static volatile String sMobileType = "";
     /** ★ 是否已取到过非空网络类型：用于「无服务/飞行模式」时清空旧 5G，避免残留。 */
     static volatile boolean sMobileTypeSeen = false;
+    /** ★ 5GA 判据：由 TrioHooks hook {@code TelephonyDisplayInfo.getOverrideNetworkType()} 写入，
+     *  5 = OVERRIDE_NETWORK_TYPE_NR_ADVANCED；-1 = 尚未取到（回落普通 5G）。 */
+    static volatile int sOverrideNetType = -1;
 
     /** ★ L77：飞行模式 / 移动数据 开关状态（渲染层读，区分飞机 vs 数据箭头）。 */
     static volatile boolean sAirplaneMode = false;
@@ -1784,7 +1788,9 @@ final class TrioState {
                     : tel.getDataNetworkType();
             switch (nt) {
                 case TelephonyManager.NETWORK_TYPE_NR:
-                    return "5G";
+                    // ★ getDataNetworkType() 对 5G / 5GA 都返回 NR，需按 SystemUI 同源的
+                    //   TelephonyDisplayInfo.getOverrideNetworkType() 区分；取不到回落 "5G"。
+                    return isNrAdvanced() ? "5GA" : "5G";
                 case TelephonyManager.NETWORK_TYPE_LTE:
                     return "4G";
                 case TelephonyManager.NETWORK_TYPE_HSPAP:
@@ -1807,6 +1813,18 @@ final class TrioState {
         } catch (Throwable t) {
             return "";
         }
+    }
+
+    /**
+     * ★ 5G Advanced（三星状态栏 "5GA"）判定。
+     * <p>反编译 SystemUI 实证：MobileConnectionRepositoryImpl 把
+     * TelephonyDisplayInfo.getOverrideNetworkType() 喂给 MobileMappings.toDisplayIconKey()：
+     * 0/3 → "20"（5G）、5 → "20_Plus"（5GA）。TrioHooks hook 同一方法，把值只读写入
+     * {@link #sOverrideNetType}。取不到（默认 -1）一律返回 false，显示普通 5G。
+     */
+    private static boolean isNrAdvanced() {
+        return sOverrideNetType
+                == TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_ADVANCED;
     }
 
     // ============================================================ 颜色
