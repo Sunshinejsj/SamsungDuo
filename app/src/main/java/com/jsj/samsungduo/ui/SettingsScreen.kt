@@ -2868,20 +2868,21 @@ private fun readScope(service: XposedService?, unknown: String): String {
 }
 
 /**
- * 模块是否真的注入到了 System UI。
+ * 模块是否已在 LSPosed 里勾选并作用于 System UI。
  *
- * <p>`xposedService != null` 只说明 LSPosed 管理器在线；模块仍可能没被勾选、或没勾作用域，
- * 那样它根本不会被加载进 System UI。框架通过 [XposedService.getRunningTargets] 报告它已注入
- * 的进程，System UI 在这个列表里才算「已激活」。
+ * <p>`xposedService != null` 只说明 LSPosed 管理器在线；必须再确认模块作用域含 System UI。
+ * 用 [XposedService.getScope] 而非 getRunningTargets：后者要等 System UI 重启、框架 daemon
+ * 记录到已注入进程才返回，首次安装勾选后仍报未激活；scope 在勾选后立即更新，与关于页
+ * 「已激活」卡片同源（它看 service 是否绑定），故勾选完即可解锁设置页并重启 UI。
  *
- * <p>查询本身抛异常时一律按「未激活」处理：误放行比短暂锁住更糟，3 秒轮询会自行恢复。
+ * <p>查询异常时按「未激活」处理，3 秒轮询会自行恢复。
  */
 private const val SYSTEM_UI_TARGET = "com.android.systemui"
 
 private suspend fun computeModuleActive(): Boolean = withContext(Dispatchers.IO) {
     val svc = SamsungDuoApp.xposedService ?: return@withContext false
     runCatching {
-        svc.getRunningTargets().any { it.processName == SYSTEM_UI_TARGET }
+        svc.scope.any { it == SYSTEM_UI_TARGET }
     }.getOrElse { false }
 }
 

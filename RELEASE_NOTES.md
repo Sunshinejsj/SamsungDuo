@@ -1,5 +1,5 @@
-# SamsungDuo 10.8
+# SamsungDuo 10.9
 
 ## 本次更新
 
-1. 修复：5G Advanced 网络下未显示 5GA。
+1. 修复：LSPosed 勾选模块后仍提示未勾选。
